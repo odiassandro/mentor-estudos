@@ -1,8 +1,9 @@
+import streamlit as st
 import psycopg2
 from datetime import datetime, timedelta
 
-# Substitua o texto abaixo pelo seu link do Supabase (mantenha as aspas)
-URL_DO_BANCO = "postgresql://postgres:Q1hgclztp44@db.jqpamxfmtbuyjxybhwsf.supabase.co:5432/postgres"
+# Agora a URL vem do cofre blindado do Streamlit! Ninguém mais vê.
+URL_DO_BANCO = st.secrets["URL_DO_BANCO"]
 
 def conectar():
     return psycopg2.connect(URL_DO_BANCO)
