@@ -224,6 +224,8 @@ with aba_config:
     st.header("Configurar Edital e Horas")
     horas_semanais = st.number_input("Quantas horas você pretende estudar por semana?", min_value=1, value=30)
     st.divider()
+    
+    # --- COMEÇO DO FORMULÁRIO DE CRIAR MATÉRIA ---
     with st.form("form_disciplina", clear_on_submit=True):
         nome_disc = st.text_input("Nome da Disciplina")
         col1, col2 = st.columns(2)
@@ -232,10 +234,11 @@ with aba_config:
         with col2:
             peso = st.slider("Peso da Matéria na Prova", 1, 5, 1, help="De 1 a 5")
         topicos_texto = st.text_area("Tópicos do Edital (Digite UM tópico por linha e dê Enter)")
+        
         if st.form_submit_button("Salvar Disciplina"):
             if nome_disc and topicos_texto:
                 lista_de_topicos = topicos_texto.split('\n')
-                # Agora passa o usuario_id para carimbar de quem é a matéria
+                # Passa o usuario_id para carimbar de quem é a matéria
                 sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, dificuldade, peso, lista_de_topicos)
                 if sucesso:
                     st.success(f"Disciplina '{nome_disc}' salva! Vá para o Calendário.")
@@ -243,3 +246,24 @@ with aba_config:
                     st.error("Erro ao salvar.")
             else:
                 st.warning("Preencha o nome da disciplina e pelo menos um tópico.")
+    # --- FIM DO FORMULÁRIO DE CRIAR MATÉRIA ---
+    
+    st.divider()
+    
+    # --- NOVA SESSÃO DE GERENCIAMENTO (A LIXEIRA) ---
+    st.header("🗑️ Gerenciar Edital")
+    st.write("Cansou de um concurso? Apague a disciplina inteira aqui (Isso apagará todo o histórico e revisões dela).")
+    
+    df_disciplinas = logica.obter_disciplinas_do_usuario(usuario_id)
+    
+    if not df_disciplinas.empty:
+        for index, row in df_disciplinas.iterrows():
+            col_nome, col_btn = st.columns([4, 1])
+            col_nome.markdown(f"**📚 {row['nome']}**")
+            
+            # Botão de excluir para cada matéria
+            if col_btn.button("❌ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                logica.deletar_disciplina(row['id'], usuario_id)
+                st.rerun() # Recarrega a página na hora para a matéria sumir
+    else:
+        st.info("Nenhuma disciplina cadastrada para excluir.")
