@@ -172,6 +172,21 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     conn.commit()
     conn.close()
 
+def obter_disciplinas_do_usuario(usuario_id):
+    conn = database.conectar()
+    query = f"SELECT id, nome FROM disciplinas WHERE usuario_id = {usuario_id} ORDER BY nome"
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
+
+def deletar_disciplina(id_disciplina, usuario_id):
+    conn = database.conectar()
+    cursor = conn.cursor()
+    # A segurança primeiro: Só deleta se a disciplina pertencer ao usuário logado!
+    cursor.execute("DELETE FROM disciplinas WHERE id = %s AND usuario_id = %s", (id_disciplina, usuario_id))
+    conn.commit()
+    conn.close()
+
 def frase_motivacional(sucesso=True):
     humilhacoes = [
         "Sua vaga acabou de sorrir pra outra pessoa. Vai deixar acumular?",
