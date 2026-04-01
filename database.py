@@ -1,9 +1,8 @@
-import streamlit as st
 import psycopg2
 from datetime import datetime, timedelta
 
-# Agora a URL vem do cofre blindado do Streamlit! Ninguém mais vê.
-URL_DO_BANCO = st.secrets["URL_DO_BANCO"]
+# Substitua o texto abaixo pelo seu link do Supabase (mantenha as aspas)
+URL_DO_BANCO = "postgresql://postgres:Q1hgclztp44@db.jqpamxfmtbuyjxybhwsf.supabase.co:5432/postgres"
 
 def conectar():
     return psycopg2.connect(URL_DO_BANCO)
@@ -106,32 +105,48 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
     conn = conectar()
     cursor = conn.cursor()
     try:
+        # 1. Busca suas configurações (Horas semanais e dias de plantão)
+        cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
+        config = cursor.fetchone()
+        horas_semanais = config[0] if config else 20
+        dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else [2, 4]
+        
+        # Cálculo de limite diário (Horas semanais divididas pelos dias úteis que sobraram)
+        dias_disponiveis_na_semana = 7 - len(dias_bloqueados)
+        limite_horas_dia = horas_semanais / dias_disponiveis_na_semana
+
         cursor.execute('INSERT INTO disciplinas (usuario_id, nome, dificuldade, peso) VALUES (%s, %s, %s, %s) RETURNING id', 
                        (usuario_id, nome, dificuldade, peso))
         id_disciplina = cursor.fetchone()[0]
         
-        prioridade = dificuldade * peso
-        
-        if prioridade >= 9:
-            intervalo_dias = 2
-        elif prioridade >= 4:
-            intervalo_dias = 3
-        else:
-            intervalo_dias = 7
-            
         hoje = datetime.now().date()
+        data_atual = hoje
+        horas_alocadas_no_dia = 0
         
-        for i, topico in enumerate(lista_topicos):
+        for topico in lista_topicos:
             topico_limpo = topico.strip()
-            if topico_limpo:
-                cursor.execute('INSERT INTO topicos (id_disciplina, nome) VALUES (%s, %s) RETURNING id', (id_disciplina, topico_limpo))
-                id_topico = cursor.fetchone()[0]
-                
-                dias_para_frente = i * intervalo_dias
-                data_estudo = hoje + timedelta(days=dias_para_frente)
-                
-                cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                               (id_topico, 'Estudo', data_estudo))
+            if not topico_limpo: continue
+            
+            # Pula os dias de plantão (Terça e Quinta)
+            while data_atual.weekday() in dias_bloqueados:
+                data_atual += timedelta(days=1)
+                horas_alocadas_no_dia = 0
+            
+            # Se já estudou demais hoje, pula para o próximo dia disponível
+            if horas_alocadas_no_dia >= limite_horas_dia:
+                data_atual += timedelta(days=1)
+                while data_atual.weekday() in dias_bloqueados:
+                    data_atual += timedelta(days=1)
+                horas_alocadas_no_dia = 0
+
+            cursor.execute('INSERT INTO topicos (id_disciplina, nome) VALUES (%s, %s) RETURNING id', (id_disciplina, topico_limpo))
+            id_topico = cursor.fetchone()[0]
+            
+            cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
+                           (id_topico, 'Estudo', data_atual))
+            
+            # Assume 1.5h por tópico novo (ajustável)
+            horas_alocadas_no_dia += 1.5 
         
         conn.commit()
         return True
@@ -140,5 +155,5 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
         return False
     finally:
         conn.close()
-
+        
 criar_tabelas()
