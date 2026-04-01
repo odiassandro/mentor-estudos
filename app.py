@@ -221,11 +221,41 @@ with aba_edital:
         st.info("Nenhuma disciplina cadastrada ainda. Vá na aba de Configuração Inicial!")
 
 with aba_config:
-    st.header("Configurar Edital e Horas")
-    horas_semanais = st.number_input("Quantas horas você pretende estudar por semana?", min_value=1, value=30)
+    # 1. PARTE NOVA: ROTINA E PLANTÕES
+    st.header("Sua Rotina e Limites")
+    
+    col_h, col_d = st.columns(2)
+    with col_h:
+        horas_semanais = st.number_input("Horas de estudo por semana:", min_value=1, value=24)
+    
+    with col_d:
+        st.write("Dias de Plantão (Bloqueados):")
+        dias_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+        selecionados = []
+        col_dias = st.columns(7)
+        for i, nome in enumerate(dias_nomes):
+            # Deixa Terça (1) e Quinta (3) marcados por padrão pra você
+            padrao = True if i in [1, 3] else False
+            if col_dias[i].checkbox(nome, value=padrao, key=f"dia_{i}"):
+                selecionados.append(str(i))
+        
+        dias_bloqueados_str = ",".join(selecionados)
+
+    if st.button("Atualizar Minha Rotina"):
+        conn = database.conectar()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE configuracao SET horas_semanais = %s, dias_bloqueados = %s 
+            WHERE usuario_id = %s
+        ''', (horas_semanais, dias_bloqueados_str, usuario_id))
+        conn.commit()
+        conn.close()
+        st.success("Rotina atualizada! As novas disciplinas respeitarão esses prazos.")
+
     st.divider()
     
-    # --- COMEÇO DO FORMULÁRIO DE CRIAR MATÉRIA ---
+    # 2. PARTE ANTIGA: CADASTRAR MATÉRIAS
+    st.header("Cadastrar Novo Edital")
     with st.form("form_disciplina", clear_on_submit=True):
         nome_disc = st.text_input("Nome da Disciplina")
         col1, col2 = st.columns(2)
@@ -238,7 +268,6 @@ with aba_config:
         if st.form_submit_button("Salvar Disciplina"):
             if nome_disc and topicos_texto:
                 lista_de_topicos = topicos_texto.split('\n')
-                # Passa o usuario_id para carimbar de quem é a matéria
                 sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, dificuldade, peso, lista_de_topicos)
                 if sucesso:
                     st.success(f"Disciplina '{nome_disc}' salva! Vá para o Calendário.")
@@ -246,6 +275,25 @@ with aba_config:
                     st.error("Erro ao salvar.")
             else:
                 st.warning("Preencha o nome da disciplina e pelo menos um tópico.")
+                
+    st.divider()
+    
+    # 3. SPIN-OFF: A LIXEIRA
+    st.header("🗑️ Gerenciar Edital")
+    st.write("Cansou de um concurso? Apague a disciplina inteira aqui (Isso apagará todo o histórico e revisões dela).")
+    
+    df_disciplinas = logica.obter_disciplinas_do_usuario(usuario_id)
+    
+    if not df_disciplinas.empty:
+        for index, row in df_disciplinas.iterrows():
+            col_nome, col_btn = st.columns([4, 1])
+            col_nome.markdown(f"**📚 {row['nome']}**")
+            
+            if col_btn.button("❌ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                logica.deletar_disciplina(row['id'], usuario_id)
+                st.rerun() 
+    else:
+        st.info("Nenhuma disciplina cadastrada para excluir.")
     # --- FIM DO FORMULÁRIO DE CRIAR MATÉRIA ---
     
     st.divider()
