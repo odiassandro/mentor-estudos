@@ -229,7 +229,7 @@ with aba_config:
         horas_semanais = st.number_input("Horas de estudo por semana:", min_value=1, value=24)
     
     with col_d:
-        st.write("Dias de Plantão (Bloqueados):")
+        st.write("Dias de Plantão/Descanso (Bloqueados):")
         dias_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
         selecionados = []
         col_dias = st.columns(7)
@@ -277,27 +277,7 @@ with aba_config:
                 st.warning("Preencha o nome da disciplina e pelo menos um tópico.")
                 
     st.divider()
-    
-    # 3. SPIN-OFF: A LIXEIRA
-    st.header("🗑️ Gerenciar Edital")
-    st.write("Cansou de um concurso? Apague a disciplina inteira aqui (Isso apagará todo o histórico e revisões dela).")
-    
-    df_disciplinas = logica.obter_disciplinas_do_usuario(usuario_id)
-    
-    if not df_disciplinas.empty:
-        for index, row in df_disciplinas.iterrows():
-            col_nome, col_btn = st.columns([4, 1])
-            col_nome.markdown(f"**📚 {row['nome']}**")
-            
-            if col_btn.button("❌ Excluir", key=f"del_{row['id']}", use_container_width=True):
-                logica.deletar_disciplina(row['id'], usuario_id)
-                st.rerun() 
-    else:
-        st.info("Nenhuma disciplina cadastrada para excluir.")
-    # --- FIM DO FORMULÁRIO DE CRIAR MATÉRIA ---
-    
-    st.divider()
-    
+     
     # --- NOVA SESSÃO DE GERENCIAMENTO (A LIXEIRA) ---
     st.header("🗑️ Gerenciar Edital")
     st.write("Cansou de um concurso? Apague a disciplina inteira aqui (Isso apagará todo o histórico e revisões dela).")
