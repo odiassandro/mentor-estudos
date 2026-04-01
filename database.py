@@ -1,12 +1,13 @@
 import psycopg2
 from datetime import datetime, timedelta
+import streamlit as st
 
-# Substitua o texto abaixo pelo seu link do Supabase (mantenha as aspas)
-URL_DO_BANCO = "postgresql://postgres:Q1hgclztp44@db.jqpamxfmtbuyjxybhwsf.supabase.co:5432/postgres"
+# Puxando a senha do cofre do Streamlit Cloud
+URL_DO_BANCO = st.secrets["URL_DO_BANCO"]
 
 def conectar():
     return psycopg2.connect(URL_DO_BANCO)
-
+    
 def criar_tabelas():
     conn = conectar()
     cursor = conn.cursor()
