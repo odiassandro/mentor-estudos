@@ -105,18 +105,14 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
     conn = conectar()
     cursor = conn.cursor()
     try:
-        # 1. Busca suas configurações
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
         horas_semanais = config[0] if config else 24
         dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else [2, 4]
         
-        # 2. Calcula limite diário global
-        dias_disponiveis_na_semana = 7 - len(dias_bloqueados)
-        if dias_disponiveis_na_semana == 0: dias_disponiveis_na_semana = 1
+        dias_disponiveis_na_semana = max(1, 7 - len(dias_bloqueados))
         limite_horas_dia = horas_semanais / dias_disponiveis_na_semana
 
-        # 3. Cadastra a disciplina
         cursor.execute('INSERT INTO disciplinas (usuario_id, nome, dificuldade, peso) VALUES (%s, %s, %s, %s) RETURNING id', 
                        (usuario_id, nome, dificuldade, peso))
         id_disciplina = cursor.fetchone()[0]
@@ -128,15 +124,12 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
             topico_limpo = topico.strip()
             if not topico_limpo: continue
             
-            # --- O NOVO CÉREBRO DO ROBÔ ---
             dia_encontrado = False
             while not dia_encontrado:
-                # Se for dia de plantão, já pula direto
                 if data_atual.weekday() in dias_bloqueados:
                     data_atual += timedelta(days=1)
                     continue
                 
-                # Olha no calendário GLOBAL do usuário para ver quantas horas já estão ocupadas nesse dia
                 cursor.execute('''
                     SELECT COUNT(*) FROM cronograma c
                     JOIN topicos t ON c.id_topico = t.id
@@ -144,17 +137,15 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
                     WHERE d.usuario_id = %s AND c.data_agendada = %s
                 ''', (usuario_id, data_atual))
                 
-                qtd_tarefas_no_dia = cursor.fetchone()[0]
-                horas_ja_ocupadas_no_dia = qtd_tarefas_no_dia * 1.5 # (Avaliando 1.5h por tópico)
+                qtd = cursor.fetchone()[0]
+                horas_ocupadas = qtd * 1.0 # O SEGREDO 1: Corrigido para 1 hora (60 min)
                 
-                # Se ainda tiver espaço no dia, achou o dia certo! Se não, pula pro próximo.
-                if (horas_ja_ocupadas_no_dia + 1.5) <= limite_horas_dia:
+                # O SEGREDO 2: Regra mais flexível pra preencher o dia certo
+                if horas_ocupadas < limite_horas_dia: 
                     dia_encontrado = True
                 else:
                     data_atual += timedelta(days=1)
-            # ------------------------------
 
-            # Insere no banco
             cursor.execute('INSERT INTO topicos (id_disciplina, nome) VALUES (%s, %s) RETURNING id', (id_disciplina, topico_limpo))
             id_topico = cursor.fetchone()[0]
             
@@ -169,11 +160,11 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
     finally:
         conn.close()
 
+
 def recalcular_cronograma_futuro(usuario_id):
     conn = conectar()
     cursor = conn.cursor()
     try:
-        # 1. Pega os seus limites atuais
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
         horas_semanais = config[0] if config else 24
@@ -182,7 +173,6 @@ def recalcular_cronograma_futuro(usuario_id):
         limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
         amanha = datetime.now().date() + timedelta(days=1)
         
-        # 2. Cata tudo que é 'Estudo' de amanhã pra frente e INTERCALA AS MATÉRIAS
         cursor.execute('''
             SELECT c.id_topico 
             FROM cronograma c
@@ -195,9 +185,8 @@ def recalcular_cronograma_futuro(usuario_id):
         agendamentos_futuros = cursor.fetchall()
         
         if not agendamentos_futuros:
-            return True # Não tem nada pra recalcular
+            return True
             
-        # 3. Apaga esses agendamentos do futuro
         cursor.execute('''
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
@@ -205,7 +194,6 @@ def recalcular_cronograma_futuro(usuario_id):
             AND d.usuario_id = %s AND c.data_agendada >= %s AND c.tipo_atividade = 'Estudo'
         ''', (usuario_id, amanha))
         
-        # 4. Distribui de novo com a regra nova
         data_atual = amanha
         
         for agendamento in agendamentos_futuros:
@@ -225,9 +213,10 @@ def recalcular_cronograma_futuro(usuario_id):
                 ''', (usuario_id, data_atual))
                 
                 qtd = cursor.fetchone()[0]
-                horas_ocupadas = qtd * 1.5
+                horas_ocupadas = qtd * 1.0 # O SEGREDO 1: Corrigido para 1 hora (60 min)
                 
-                if (horas_ocupadas + 1.5) <= limite_horas_dia:
+                # O SEGREDO 2: Regra mais flexível pra preencher o dia certo
+                if horas_ocupadas < limite_horas_dia: 
                     dia_encontrado = True
                 else:
                     data_atual += timedelta(days=1)
@@ -242,6 +231,5 @@ def recalcular_cronograma_futuro(usuario_id):
         return False
     finally:
         conn.close()
-        
         
 criar_tabelas()
