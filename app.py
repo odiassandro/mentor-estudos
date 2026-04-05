@@ -251,7 +251,16 @@ with aba_config:
         ''', (horas_semanais, dias_bloqueados_str, usuario_id))
         conn.commit()
         conn.close()
-        st.success("Rotina atualizada! As novas disciplinas respeitarão esses prazos.")
+        
+        # Agora o robô reorganiza o futuro automaticamente!
+        st.info("Reorganizando o seu cronograma... Aguarde.")
+        sucesso = database.recalcular_cronograma_futuro(usuario_id)
+        
+        if sucesso:
+            st.success("Rotina atualizada e calendário recalculado! Suas férias estão a salvo.")
+            st.rerun()
+        else:
+            st.error("Ops, deu um erro ao recalcular.")
 
     st.divider()
     
