@@ -216,10 +216,11 @@ with aba_edital:
                     if row['estudado']:
                         st.markdown(f"✅ <span style='text-decoration: line-through; color: #888888;'>{row['topico']}</span>", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"⏳ <span style='color: #ffffff;'>{row['topico']}</span>", unsafe_allow_html=True)
+                        # Removi o "color: #ffffff;" para a mágica acontecer!
+                        st.markdown(f"⏳ <span>{row['topico']}</span>", unsafe_allow_html=True)
     else:
         st.info("Nenhuma disciplina cadastrada ainda. Vá na aba de Configuração Inicial!")
-
+        
 with aba_config:
     # 1. PARTE NOVA: ROTINA E PLANTÕES
     st.header("Sua Rotina e Limites")
