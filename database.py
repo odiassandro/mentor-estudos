@@ -130,18 +130,23 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
                     data_atual += timedelta(days=1)
                     continue
                 
+                # A MÁGICA NOVA AQUI: Soma 1.0h pra Estudo e 0.5h pro resto
                 cursor.execute('''
-                    SELECT COUNT(*) FROM cronograma c
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN c.tipo_atividade = 'Estudo' THEN 1.0
+                            ELSE 0.5
+                        END
+                    ), 0) FROM cronograma c
                     JOIN topicos t ON c.id_topico = t.id
                     JOIN disciplinas d ON t.id_disciplina = d.id
                     WHERE d.usuario_id = %s AND c.data_agendada = %s
                 ''', (usuario_id, data_atual))
                 
-                qtd = cursor.fetchone()[0]
-                horas_ocupadas = qtd * 1.0 # O SEGREDO 1: Corrigido para 1 hora (60 min)
+                horas_ocupadas = float(cursor.fetchone()[0])
                 
-                # O SEGREDO 2: Regra mais flexível pra preencher o dia certo
-                if horas_ocupadas < limite_horas_dia: 
+                # Só agenda se tiver pelo menos 1 hora sobrando no dia pra essa matéria nova
+                if (horas_ocupadas + 1.0) <= limite_horas_dia: 
                     dia_encontrado = True
                 else:
                     data_atual += timedelta(days=1)
@@ -174,11 +179,11 @@ def recalcular_cronograma_futuro(usuario_id):
         amanha = datetime.now().date() + timedelta(days=1)
         
         cursor.execute('''
-            SELECT c.id_topico 
+            SELECT c.id_topico, c.tipo_atividade 
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
-            WHERE d.usuario_id = %s AND c.data_agendada >= %s AND c.tipo_atividade = 'Estudo'
+            WHERE d.usuario_id = %s AND c.data_agendada >= %s 
             ORDER BY ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id), d.id
         ''', (usuario_id, amanha))
         
@@ -191,13 +196,16 @@ def recalcular_cronograma_futuro(usuario_id):
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
             WHERE c.id_topico = t.id AND t.id_disciplina = d.id
-            AND d.usuario_id = %s AND c.data_agendada >= %s AND c.tipo_atividade = 'Estudo'
+            AND d.usuario_id = %s AND c.data_agendada >= %s
         ''', (usuario_id, amanha))
         
         data_atual = amanha
         
         for agendamento in agendamentos_futuros:
             id_topico = agendamento[0]
+            tipo_atividade = agendamento[1]
+            tempo_desta_atividade = 1.0 if tipo_atividade == 'Estudo' else 0.5
+            
             dia_encontrado = False
             
             while not dia_encontrado:
@@ -206,23 +214,26 @@ def recalcular_cronograma_futuro(usuario_id):
                     continue
                 
                 cursor.execute('''
-                    SELECT COUNT(*) FROM cronograma c
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN c.tipo_atividade = 'Estudo' THEN 1.0
+                            ELSE 0.5
+                        END
+                    ), 0) FROM cronograma c
                     JOIN topicos t ON c.id_topico = t.id
                     JOIN disciplinas d ON t.id_disciplina = d.id
                     WHERE d.usuario_id = %s AND c.data_agendada = %s
                 ''', (usuario_id, data_atual))
                 
-                qtd = cursor.fetchone()[0]
-                horas_ocupadas = qtd * 1.0 # O SEGREDO 1: Corrigido para 1 hora (60 min)
+                horas_ocupadas = float(cursor.fetchone()[0])
                 
-                # O SEGREDO 2: Regra mais flexível pra preencher o dia certo
-                if horas_ocupadas < limite_horas_dia: 
+                if (horas_ocupadas + tempo_desta_atividade) <= limite_horas_dia: 
                     dia_encontrado = True
                 else:
                     data_atual += timedelta(days=1)
                     
             cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                           (id_topico, 'Estudo', data_atual))
+                           (id_topico, tipo_atividade, data_atual))
                            
         conn.commit()
         return True
