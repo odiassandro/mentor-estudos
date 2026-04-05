@@ -182,14 +182,14 @@ def recalcular_cronograma_futuro(usuario_id):
         limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
         amanha = datetime.now().date() + timedelta(days=1)
         
-        # 2. Cata tudo que é 'Estudo' de amanhã pra frente
+        # 2. Cata tudo que é 'Estudo' de amanhã pra frente e INTERCALA AS MATÉRIAS
         cursor.execute('''
             SELECT c.id_topico 
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
             WHERE d.usuario_id = %s AND c.data_agendada >= %s AND c.tipo_atividade = 'Estudo'
-            ORDER BY c.data_agendada, c.id
+            ORDER BY ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id), d.id
         ''', (usuario_id, amanha))
         
         agendamentos_futuros = cursor.fetchall()
@@ -242,5 +242,6 @@ def recalcular_cronograma_futuro(usuario_id):
         return False
     finally:
         conn.close()
+        
         
 criar_tabelas()
