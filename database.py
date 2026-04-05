@@ -168,5 +168,79 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
         return False
     finally:
         conn.close()
+
+def recalcular_cronograma_futuro(usuario_id):
+    conn = conectar()
+    cursor = conn.cursor()
+    try:
+        # 1. Pega os seus limites atuais
+        cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
+        config = cursor.fetchone()
+        horas_semanais = config[0] if config else 24
+        dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else []
+        
+        limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
+        amanha = datetime.now().date() + timedelta(days=1)
+        
+        # 2. Cata tudo que é 'Estudo' de amanhã pra frente
+        cursor.execute('''
+            SELECT c.id_topico 
+            FROM cronograma c
+            JOIN topicos t ON c.id_topico = t.id
+            JOIN disciplinas d ON t.id_disciplina = d.id
+            WHERE d.usuario_id = %s AND c.data_agendada >= %s AND c.tipo_atividade = 'Estudo'
+            ORDER BY c.data_agendada, c.id
+        ''', (usuario_id, amanha))
+        
+        agendamentos_futuros = cursor.fetchall()
+        
+        if not agendamentos_futuros:
+            return True # Não tem nada pra recalcular
+            
+        # 3. Apaga esses agendamentos do futuro
+        cursor.execute('''
+            DELETE FROM cronograma c
+            USING topicos t, disciplinas d
+            WHERE c.id_topico = t.id AND t.id_disciplina = d.id
+            AND d.usuario_id = %s AND c.data_agendada >= %s AND c.tipo_atividade = 'Estudo'
+        ''', (usuario_id, amanha))
+        
+        # 4. Distribui de novo com a regra nova
+        data_atual = amanha
+        
+        for agendamento in agendamentos_futuros:
+            id_topico = agendamento[0]
+            dia_encontrado = False
+            
+            while not dia_encontrado:
+                if data_atual.weekday() in dias_bloqueados:
+                    data_atual += timedelta(days=1)
+                    continue
+                
+                cursor.execute('''
+                    SELECT COUNT(*) FROM cronograma c
+                    JOIN topicos t ON c.id_topico = t.id
+                    JOIN disciplinas d ON t.id_disciplina = d.id
+                    WHERE d.usuario_id = %s AND c.data_agendada = %s
+                ''', (usuario_id, data_atual))
+                
+                qtd = cursor.fetchone()[0]
+                horas_ocupadas = qtd * 1.5
+                
+                if (horas_ocupadas + 1.5) <= limite_horas_dia:
+                    dia_encontrado = True
+                else:
+                    data_atual += timedelta(days=1)
+                    
+            cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
+                           (id_topico, 'Estudo', data_atual))
+                           
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Erro ao recalcular: {e}")
+        return False
+    finally:
+        conn.close()
         
 criar_tabelas()
