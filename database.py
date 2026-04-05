@@ -101,58 +101,70 @@ def fazer_login(username, senha):
         return resultado[0] # Retorna o ID (o crachá) do usuário
     return None
 
-# --- FUNÇÃO ATUALIZADA (Agora recebe o crachá na hora de salvar) ---
 def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topicos):
     conn = conectar()
     cursor = conn.cursor()
     try:
-        # 1. Busca suas configurações (Horas semanais e dias de plantão)
+        # 1. Busca suas configurações
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
-        horas_semanais = config[0] if config else 20
+        horas_semanais = config[0] if config else 24
         dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else [2, 4]
         
-        # Cálculo de limite diário (Horas semanais divididas pelos dias úteis que sobraram)
+        # 2. Calcula limite diário global
         dias_disponiveis_na_semana = 7 - len(dias_bloqueados)
+        if dias_disponiveis_na_semana == 0: dias_disponiveis_na_semana = 1
         limite_horas_dia = horas_semanais / dias_disponiveis_na_semana
 
+        # 3. Cadastra a disciplina
         cursor.execute('INSERT INTO disciplinas (usuario_id, nome, dificuldade, peso) VALUES (%s, %s, %s, %s) RETURNING id', 
                        (usuario_id, nome, dificuldade, peso))
         id_disciplina = cursor.fetchone()[0]
         
         hoje = datetime.now().date()
         data_atual = hoje
-        horas_alocadas_no_dia = 0
         
         for topico in lista_topicos:
             topico_limpo = topico.strip()
             if not topico_limpo: continue
             
-            # Pula os dias de plantão (Terça e Quinta)
-            while data_atual.weekday() in dias_bloqueados:
-                data_atual += timedelta(days=1)
-                horas_alocadas_no_dia = 0
-            
-            # Se já estudou demais hoje, pula para o próximo dia disponível
-            if horas_alocadas_no_dia >= limite_horas_dia:
-                data_atual += timedelta(days=1)
-                while data_atual.weekday() in dias_bloqueados:
+            # --- O NOVO CÉREBRO DO ROBÔ ---
+            dia_encontrado = False
+            while not dia_encontrado:
+                # Se for dia de plantão, já pula direto
+                if data_atual.weekday() in dias_bloqueados:
                     data_atual += timedelta(days=1)
-                horas_alocadas_no_dia = 0
+                    continue
+                
+                # Olha no calendário GLOBAL do usuário para ver quantas horas já estão ocupadas nesse dia
+                cursor.execute('''
+                    SELECT COUNT(*) FROM cronograma c
+                    JOIN topicos t ON c.id_topico = t.id
+                    JOIN disciplinas d ON t.id_disciplina = d.id
+                    WHERE d.usuario_id = %s AND c.data_agendada = %s
+                ''', (usuario_id, data_atual))
+                
+                qtd_tarefas_no_dia = cursor.fetchone()[0]
+                horas_ja_ocupadas_no_dia = qtd_tarefas_no_dia * 1.5 # (Avaliando 1.5h por tópico)
+                
+                # Se ainda tiver espaço no dia, achou o dia certo! Se não, pula pro próximo.
+                if (horas_ja_ocupadas_no_dia + 1.5) <= limite_horas_dia:
+                    dia_encontrado = True
+                else:
+                    data_atual += timedelta(days=1)
+            # ------------------------------
 
+            # Insere no banco
             cursor.execute('INSERT INTO topicos (id_disciplina, nome) VALUES (%s, %s) RETURNING id', (id_disciplina, topico_limpo))
             id_topico = cursor.fetchone()[0]
             
             cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
                            (id_topico, 'Estudo', data_atual))
-            
-            # Assume 1.5h por tópico novo (ajustável)
-            horas_alocadas_no_dia += 1.5 
         
         conn.commit()
         return True
     except Exception as e:
-        print(f"Erro: {e}")
+        print(f"Erro ao salvar: {e}")
         return False
     finally:
         conn.close()
