@@ -243,5 +243,41 @@ def recalcular_cronograma_futuro(usuario_id):
         return False
     finally:
         conn.close()
+
+def atualizar_streak_e_xp(usuario_id, pontos_ganho):
+    conn = conectar()
+    cursor = conn.cursor()
+    try:
+        hoje = datetime.now(ZoneInfo('America/Bahia')).date()
+        ontem = hoje - timedelta(days=1)
+        
+        # Busca como está o seu status atual
+        cursor.execute('SELECT streak, ultima_atividade FROM usuarios WHERE id = %s', (usuario_id,))
+        resultado = cursor.fetchone()
+        
+        if resultado:
+            streak_atual = resultado[0] if resultado[0] else 0
+            ultima_atividade = resultado[1]
+            
+            # Lógica da Ofensiva (Streak)
+            if ultima_atividade == hoje:
+                novo_streak = streak_atual # Já estudou hoje, mantém
+            elif ultima_atividade == ontem:
+                novo_streak = streak_atual + 1 # Estudou ontem e hoje, subiu!
+            else:
+                novo_streak = 1 # Ficou dias sem estudar, recomeça do 1
+                
+            # Atualiza tudo no banco
+            cursor.execute('''
+                UPDATE usuarios 
+                SET streak = %s, ultima_atividade = %s, pontos = COALESCE(pontos, 0) + %s 
+                WHERE id = %s
+            ''', (novo_streak, hoje, pontos_ganho, usuario_id))
+            
+            conn.commit()
+    except Exception as e:
+        print(f"Erro ao atualizar streak: {e}")
+    finally:
+        conn.close()
         
 criar_tabelas()
