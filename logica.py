@@ -136,6 +136,11 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
     if pendentes == 0:
         cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
         
+    # --- AQUI A MÁGICA DO STREAK ACONTECE ---
+    # Coloquei 0 de XP porque o seu código ali em cima já está te dando os 10 pontos!
+    database.atualizar_streak_e_xp(usuario_id, 0)
+    # ----------------------------------------
+        
     conn.commit()
     conn.close()
 
