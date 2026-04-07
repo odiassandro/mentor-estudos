@@ -7,11 +7,25 @@ import random
 def obter_estatisticas_usuario(usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
-    cursor.execute('SELECT streak, pontos FROM configuracao WHERE usuario_id = %s', (usuario_id,))
-    resultado = cursor.fetchone()
-    conn.close()
-    return resultado[0], resultado[1] if resultado else (0, 0)
-
+    try:
+        # Vamos buscar o streak da tabela 'usuarios' e os pontos da 'configuracao'
+        cursor.execute('''
+            SELECT u.streak, c.pontos 
+            FROM usuarios u
+            JOIN configuracao c ON u.id = c.usuario_id
+            WHERE u.id = %s
+        ''', (usuario_id,))
+        
+        resultado = cursor.fetchone()
+        if resultado:
+            return resultado[0], resultado[1] # Retorna (streak, pontos)
+        return 0, 0
+    except Exception as e:
+        print(f"Erro ao obter estatísticas: {e}")
+        return 0, 0
+    finally:
+        conn.close()
+        
 def calcular_progresso_edital(usuario_id):
     conn = database.conectar()
     query = f'''
