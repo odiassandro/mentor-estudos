@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import logica
 import database
 
@@ -100,7 +101,7 @@ with aba_dashboard:
 with aba_calendario:
     st.header("Cronograma da Semana")
     df_agenda = logica.obter_agenda_pendente(usuario_id)
-    hoje = datetime.now().date()
+    hoje = datetime.now(ZoneInfo('America/Bahia')).date()
     
     datas_semana = [hoje + timedelta(days=i) for i in range(7)]
     dias_semana_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
