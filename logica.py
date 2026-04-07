@@ -1,5 +1,6 @@
 import pandas as pd
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import database
 import random
 
@@ -64,7 +65,7 @@ def calcular_acertos_por_materia(usuario_id):
 
 def obter_agenda_pendente(usuario_id):
     conn = database.conectar()
-    hoje = datetime.now().date()
+    hoje = datetime.now(ZoneInfo('America/Bahia')).date()
     daqui_7_dias = hoje + timedelta(days=6)
     
     query = f'''
@@ -95,7 +96,7 @@ def obter_edital_verticalizado(usuario_id):
 def estudei_mas_nao_terminei(id_cronograma, usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
-    hoje = datetime.now().date()
+    hoje = datetime.now(ZoneInfo('America/Bahia')).date()
     amanha = hoje + timedelta(days=1)
     
     cursor.execute('UPDATE cronograma SET concluido = TRUE WHERE id = %s', (id_cronograma,))
@@ -127,7 +128,7 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
 def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df, acertos, total, usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
-    hoje = datetime.now().date()
+    hoje = datetime.now(ZoneInfo('America/Bahia')).date()
     
     if acertos > total:
         acertos = total
