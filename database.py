@@ -1,5 +1,6 @@
 import psycopg2
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import streamlit as st
 
 # Puxando a senha do cofre do Streamlit Cloud
@@ -117,7 +118,7 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
                        (usuario_id, nome, dificuldade, peso))
         id_disciplina = cursor.fetchone()[0]
         
-        hoje = datetime.now().date()
+        hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         data_atual = hoje
         
         for topico in lista_topicos:
@@ -176,7 +177,7 @@ def recalcular_cronograma_futuro(usuario_id):
         dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else []
         
         limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
-        amanha = datetime.now().date() + timedelta(days=1)
+        amanha = datetime.now(ZoneInfo('America/Bahia')).date() + timedelta(days=1)
         
         cursor.execute('''
             SELECT c.id_topico, c.tipo_atividade 
