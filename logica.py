@@ -170,6 +170,11 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if pendentes == 0:
         cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
         
+    # --- AQUI ESTÁ O PULO DO GATO (O STREAK) ---
+    # Chamamos a função do database para carimbar a ofensiva e dar os pontos no perfil
+    database.atualizar_streak_e_xp(usuario_id, 10)
+    # -------------------------------------------
+        
     conn.commit()
     conn.close()
 
