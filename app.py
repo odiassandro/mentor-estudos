@@ -102,7 +102,24 @@ with aba_calendario:
     st.header("Cronograma da Semana")
     df_agenda = logica.obter_agenda_pendente(usuario_id)
     hoje = datetime.now(ZoneInfo('America/Bahia')).date()
-    
+
+    # 1. Primeiro a gente verifica se tem matéria atrasada ou pendente hoje
+    if not df_agenda.empty:
+        df_pendente_hoje = df_agenda[pd.to_datetime(df_agenda['data_agendada']).dt.date <= hoje]
+    else:
+        df_pendente_hoje = pd.DataFrame() 
+
+    # 2. AS FRASES DE HUMILHAÇÃO (OU GLÓRIA) ENTRAM AQUI NO TOPO!
+    if df_pendente_hoje.empty:
+        st.success("Sua missão de HOJE está cumprida! Descanse agora guerreiro.")
+        st.markdown(f"<div style='font-size: 20px; font-weight: bold; color: #2ca02c;'>{logica.frase_motivacional(sucesso=True)}</div>", unsafe_allow_html=True)
+    else:
+        st.error(f"Pendente HOJE: {logica.frase_motivacional(sucesso=False)}")
+
+    st.divider()
+
+    # 3. Daqui pra baixo continua a montagem normal da semana...
+ 
     datas_semana = [hoje + timedelta(days=i) for i in range(7)]
     dias_semana_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     cols = st.columns(7)
@@ -196,13 +213,6 @@ with aba_calendario:
                               use_container_width=True)
                 
                 st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-
-    st.divider() 
-    if df_pendente_hoje.empty:
-        st.success("Sua missão de HOJE está cumprida! Descanse agora guerreiro.")
-        st.markdown(f"<div style='font-size: 20px; font-weight: bold; color: #2ca02c;'>{logica.frase_motivacional(sucesso=True)}</div>", unsafe_allow_html=True)
-    else:
-        st.error(f"Pendente HOJE: {logica.frase_motivacional(sucesso=False)}")
 
 with aba_edital:
     st.header("Seu Edital Verticalizado")
