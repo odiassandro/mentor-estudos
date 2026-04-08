@@ -45,19 +45,28 @@ def calcular_progresso_edital(usuario_id):
 def calcular_taxa_acertos(usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT SUM(c.acertos), SUM(c.total_questoes) 
-        FROM cronograma c
-        JOIN topicos t ON c.id_topico = t.id
-        JOIN disciplinas d ON t.id_disciplina = d.id
-        WHERE c.concluido = TRUE AND c.total_questoes > 0 AND d.usuario_id = %s
-    ''', (usuario_id,))
-    resultado = cursor.fetchone()
-    conn.close()
-    
-    if resultado[0] and resultado[1] and resultado[1] > 0:
-        return round((resultado[0] / resultado[1]) * 100, 1)
-    return 0.0
+    try:
+        # Pega a soma de TODOS os acertos e TODAS as questões que você já fez
+        cursor.execute('''
+            SELECT SUM(c.acertos), SUM(c.total_questoes)
+            FROM cronograma c
+            JOIN topicos t ON c.id_topico = t.id
+            JOIN disciplinas d ON t.id_disciplina = d.id
+            WHERE d.usuario_id = %s AND c.concluido = TRUE AND c.total_questoes > 0
+        ''', (usuario_id,))
+        
+        resultado = cursor.fetchone()
+        
+        if resultado and resultado[1]: # Se existir total de questões > 0
+            total_acertos = resultado[0]
+            total_questoes = resultado[1]
+            return round((total_acertos / total_questoes) * 100, 1)
+        return 0.0
+    except Exception as e:
+        print(f"Erro ao calcular taxa: {e}")
+        return 0.0
+    finally:
+        conn.close()
 
 def calcular_acertos_por_materia(usuario_id):
     conn = database.conectar()
