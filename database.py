@@ -177,30 +177,34 @@ def recalcular_cronograma_futuro(usuario_id):
         dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else []
         
         limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
-        amanha = datetime.now(ZoneInfo('America/Bahia')).date() + timedelta(days=1)
         
+        # AQUI FOI A MUDANÇA: Começamos a olhar a partir do HOJE!
+        hoje = datetime.now(ZoneInfo('America/Bahia')).date()
+        
+        # Pega TUDO de hoje em diante que NÃO foi concluído
         cursor.execute('''
             SELECT c.id_topico, c.tipo_atividade 
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
-            WHERE d.usuario_id = %s AND c.data_agendada >= %s 
-            ORDER BY ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id), d.id
-        ''', (usuario_id, amanha))
+            WHERE d.usuario_id = %s AND c.data_agendada >= %s AND c.concluido = FALSE
+            ORDER BY c.data_agendada, ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id), d.id
+        ''', (usuario_id, hoje))
         
         agendamentos_futuros = cursor.fetchall()
         
         if not agendamentos_futuros:
             return True
             
+        # Apaga os pendentes para reorganizar a fila
         cursor.execute('''
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
             WHERE c.id_topico = t.id AND t.id_disciplina = d.id
-            AND d.usuario_id = %s AND c.data_agendada >= %s
-        ''', (usuario_id, amanha))
+            AND d.usuario_id = %s AND c.data_agendada >= %s AND c.concluido = FALSE
+        ''', (usuario_id, hoje))
         
-        data_atual = amanha
+        data_atual = hoje
         
         for agendamento in agendamentos_futuros:
             id_topico = agendamento[0]
@@ -214,6 +218,7 @@ def recalcular_cronograma_futuro(usuario_id):
                     data_atual += timedelta(days=1)
                     continue
                 
+                # O robô conta quanto tempo já está ocupado no dia (incluindo o que você já concluiu!)
                 cursor.execute('''
                     SELECT COALESCE(SUM(
                         CASE 
