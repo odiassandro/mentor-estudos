@@ -110,39 +110,46 @@ def obter_edital_verticalizado(usuario_id):
 def estudei_mas_nao_terminei(id_cronograma, usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
-    hoje = datetime.now(ZoneInfo('America/Bahia')).date()
-    amanha = hoje + timedelta(days=1)
-    
-    cursor.execute('UPDATE cronograma SET concluido = TRUE WHERE id = %s', (id_cronograma,))
-    cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
-    resultado = cursor.fetchone()
-    
-    if resultado:
-        id_topico = resultado[0]
-        cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                       (id_topico, 'Estudo', amanha))
+    try:
+        hoje = datetime.now(ZoneInfo('America/Bahia')).date()
+        amanha = hoje + timedelta(days=1)
         
-    cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
-    
-    # Checa o bônus de zerar o dia para esse usuário específico
-    cursor.execute('''
-        SELECT COUNT(*) FROM cronograma c
-        JOIN topicos t ON c.id_topico = t.id
-        JOIN disciplinas d ON t.id_disciplina = d.id
-        WHERE c.data_agendada <= %s AND c.concluido = FALSE AND d.usuario_id = %s
-    ''', (hoje, usuario_id))
-    pendentes = cursor.fetchone()[0]
-    
-    if pendentes == 0:
+        cursor.execute('UPDATE cronograma SET concluido = TRUE WHERE id = %s', (id_cronograma,))
+        cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
+        resultado = cursor.fetchone()
+        
+        if resultado:
+            id_topico = resultado[0]
+            # Coloca o tópico pra amanhã (ele vai entrar na fila do recalculo)
+            cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
+                           (id_topico, 'Estudo', amanha))
+            
         cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
         
-    # --- AQUI A MÁGICA DO STREAK ACONTECE ---
-    # Coloquei 0 de XP porque o seu código ali em cima já está te dando os 10 pontos!
-    database.atualizar_streak_e_xp(usuario_id, 0)
-    # ----------------------------------------
+        cursor.execute('''
+            SELECT COUNT(*) FROM cronograma c
+            JOIN topicos t ON c.id_topico = t.id
+            JOIN disciplinas d ON t.id_disciplina = d.id
+            WHERE c.data_agendada <= %s AND c.concluido = FALSE AND d.usuario_id = %s
+        ''', (hoje, usuario_id))
+        pendentes = cursor.fetchone()[0]
         
-    conn.commit()
-    conn.close()
+        if pendentes == 0:
+            cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
+            
+        # O fogo da ofensiva continua aqui
+        database.atualizar_streak_e_xp(usuario_id, 0)
+            
+        conn.commit()
+    except Exception as e:
+        print(f"Erro ao adiar tarefa: {e}")
+    finally:
+        conn.close()
+        
+    # --- A MÁGICA DA AUTOMAÇÃO AQUI! ---
+    # Depois de fechar o banco, mandamos o robô arrumar a bagunça do futuro!
+    database.recalcular_cronograma_futuro(usuario_id)
+
 
 def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df, acertos, total, usuario_id):
     conn = database.conectar()
