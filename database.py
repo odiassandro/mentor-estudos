@@ -244,14 +244,14 @@ def recalcular_cronograma_futuro(usuario_id):
     finally:
         conn.close()
 
-def atualizar_streak_e_xp(usuario_id, pontos_ganho):
+def atualizar_streak_e_xp(usuario_id, xp_ganho=0):
+    # Mantive o xp_ganho ali só pra não quebrar a função que você já colou no logica.py
     conn = conectar()
     cursor = conn.cursor()
     try:
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         ontem = hoje - timedelta(days=1)
         
-        # Busca como está o seu status atual
         cursor.execute('SELECT streak, ultima_atividade FROM usuarios WHERE id = %s', (usuario_id,))
         resultado = cursor.fetchone()
         
@@ -259,20 +259,19 @@ def atualizar_streak_e_xp(usuario_id, pontos_ganho):
             streak_atual = resultado[0] if resultado[0] else 0
             ultima_atividade = resultado[1]
             
-            # Lógica da Ofensiva (Streak)
             if ultima_atividade == hoje:
-                novo_streak = streak_atual # Já estudou hoje, mantém
+                novo_streak = streak_atual
             elif ultima_atividade == ontem:
-                novo_streak = streak_atual + 1 # Estudou ontem e hoje, subiu!
+                novo_streak = streak_atual + 1
             else:
-                novo_streak = 1 # Ficou dias sem estudar, recomeça do 1
+                novo_streak = 1
                 
-            # Atualiza tudo no banco
+            # AGORA SIM! Atualizando SÓ O QUE EXISTE na tabela usuarios!
             cursor.execute('''
                 UPDATE usuarios 
-                SET streak = %s, ultima_atividade = %s, pontos = COALESCE(pontos, 0) + %s 
+                SET streak = %s, ultima_atividade = %s 
                 WHERE id = %s
-            ''', (novo_streak, hoje, pontos_ganho, usuario_id))
+            ''', (novo_streak, hoje, usuario_id))
             
             conn.commit()
     except Exception as e:
