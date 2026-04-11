@@ -131,8 +131,15 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
                     data_atual += timedelta(days=1)
                     continue
                 
-                # A MÁGICA NOVA AQUI: Soma 1.0h pra Estudo e 0.5h pro resto
-                cursor.execute('''
+                # --- A INTELIGÊNCIA DA DÍVIDA COMEÇA AQUI ---
+                if data_atual == hoje:
+                    # Se estamos olhando pro "Hoje", soma TUDO que tá atrasado também!
+                    filtro_sql = "c.data_agendada <= %s AND c.concluido = FALSE"
+                else:
+                    # Se for pro futuro, olha só o próprio dia
+                    filtro_sql = "c.data_agendada = %s AND c.concluido = FALSE"
+                    
+                cursor.execute(f'''
                     SELECT COALESCE(SUM(
                         CASE 
                             WHEN c.tipo_atividade = 'Estudo' THEN 1.0
@@ -141,12 +148,12 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
                     ), 0) FROM cronograma c
                     JOIN topicos t ON c.id_topico = t.id
                     JOIN disciplinas d ON t.id_disciplina = d.id
-                    WHERE d.usuario_id = %s AND c.data_agendada = %s
+                    WHERE d.usuario_id = %s AND {filtro_sql}
                 ''', (usuario_id, data_atual))
+                # --------------------------------------------
                 
                 horas_ocupadas = float(cursor.fetchone()[0])
                 
-                # Só agenda se tiver pelo menos 1 hora sobrando no dia pra essa matéria nova
                 if (horas_ocupadas + 1.0) <= limite_horas_dia: 
                     dia_encontrado = True
                 else:
@@ -177,11 +184,8 @@ def recalcular_cronograma_futuro(usuario_id):
         dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else []
         
         limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
-        
-        # AQUI FOI A MUDANÇA: Começamos a olhar a partir do HOJE!
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         
-        # Pega TUDO de hoje em diante que NÃO foi concluído
         cursor.execute('''
             SELECT c.id_topico, c.tipo_atividade 
             FROM cronograma c
@@ -196,7 +200,6 @@ def recalcular_cronograma_futuro(usuario_id):
         if not agendamentos_futuros:
             return True
             
-        # Apaga os pendentes para reorganizar a fila
         cursor.execute('''
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
@@ -218,8 +221,13 @@ def recalcular_cronograma_futuro(usuario_id):
                     data_atual += timedelta(days=1)
                     continue
                 
-                # O robô conta quanto tempo já está ocupado no dia (incluindo o que você já concluiu!)
-                cursor.execute('''
+                # --- A INTELIGÊNCIA DA DÍVIDA COMEÇA AQUI ---
+                if data_atual == hoje:
+                    filtro_sql = "c.data_agendada <= %s AND c.concluido = FALSE"
+                else:
+                    filtro_sql = "c.data_agendada = %s AND c.concluido = FALSE"
+                    
+                cursor.execute(f'''
                     SELECT COALESCE(SUM(
                         CASE 
                             WHEN c.tipo_atividade = 'Estudo' THEN 1.0
@@ -228,8 +236,9 @@ def recalcular_cronograma_futuro(usuario_id):
                     ), 0) FROM cronograma c
                     JOIN topicos t ON c.id_topico = t.id
                     JOIN disciplinas d ON t.id_disciplina = d.id
-                    WHERE d.usuario_id = %s AND c.data_agendada = %s
+                    WHERE d.usuario_id = %s AND {filtro_sql}
                 ''', (usuario_id, data_atual))
+                # --------------------------------------------
                 
                 horas_ocupadas = float(cursor.fetchone()[0])
                 
@@ -248,7 +257,7 @@ def recalcular_cronograma_futuro(usuario_id):
         return False
     finally:
         conn.close()
-
+        
 def atualizar_streak_e_xp(usuario_id, xp_ganho=0):
     # Mantive o xp_ganho ali só pra não quebrar a função que você já colou no logica.py
     conn = conectar()
