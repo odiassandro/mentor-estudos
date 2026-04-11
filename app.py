@@ -56,7 +56,7 @@ if st.session_state['usuario_id'] is None:
 usuario_id = st.session_state['usuario_id']
 
 col_titulo, col_sair = st.columns([8, 1])
-col_titulo.title("☠️ Mentor de Estudos - Modo Hard")
+col_titulo.title("☠️ Mentor de Estudos - Modo Hard - TESTE")
 if col_sair.button("🚪 Sair", use_container_width=True):
     st.session_state['usuario_id'] = None
     st.rerun()
