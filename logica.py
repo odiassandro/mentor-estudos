@@ -8,9 +8,9 @@ def obter_estatisticas_usuario(usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
     try:
-        # Vamos buscar o streak da tabela 'usuarios' e os pontos da 'configuracao'
+        # Buscamos a data da última atividade também!
         cursor.execute('''
-            SELECT u.streak, c.pontos 
+            SELECT u.streak, u.ultima_atividade, c.pontos 
             FROM usuarios u
             JOIN configuracao c ON u.id = c.usuario_id
             WHERE u.id = %s
@@ -18,7 +18,20 @@ def obter_estatisticas_usuario(usuario_id):
         
         resultado = cursor.fetchone()
         if resultado:
-            return resultado[0], resultado[1] # Retorna (streak, pontos)
+            streak_db = resultado[0] if resultado[0] else 0
+            ultima_ativ = resultado[1]
+            pontos = resultado[2] if resultado[2] else 0
+            
+            hoje = datetime.now(ZoneInfo('America/Bahia')).date()
+            ontem = hoje - timedelta(days=1)
+            
+            # O cérebro do Streak: Se você estudou hoje ou ontem, mantém. Se não, ZERA!
+            if ultima_ativ and ultima_ativ >= ontem:
+                streak_real = streak_db
+            else:
+                streak_real = 0
+                
+            return streak_real, pontos
         return 0, 0
     except Exception as e:
         print(f"Erro ao obter estatísticas: {e}")
@@ -204,14 +217,17 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     
     if pendentes == 0:
         cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
-        
+          
     # --- AQUI ESTÁ O PULO DO GATO (O STREAK) ---
-    # Chamamos a função do database para carimbar a ofensiva e dar os pontos no perfil
     database.atualizar_streak_e_xp(usuario_id, 10)
     # -------------------------------------------
         
     conn.commit()
     conn.close()
+    
+    # --- O GATILHO QUE FALTAVA ---
+    # Agora, ao concluir QUALQUER matéria, o robô vai arrumar o calendário!
+    database.recalcular_cronograma_futuro(usuario_id)
 
 def obter_disciplinas_do_usuario(usuario_id):
     conn = database.conectar()
