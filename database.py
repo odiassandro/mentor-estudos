@@ -234,7 +234,7 @@ def recalcular_cronograma_futuro(usuario_id):
                     ), 0) FROM cronograma c
                     JOIN topicos t ON c.id_topico = t.id
                     JOIN disciplinas d ON t.id_disciplina = d.id
-                    WHERE d.usuario_id = %s AND c.data_agendada = %s AND c.concluido = FALSE
+                    WHERE d.usuario_id = %s AND c.data_agendada = %s
                 ''', (usuario_id, data_atual))
                 
                 horas_ocupadas = float(cursor.fetchone()[0])
