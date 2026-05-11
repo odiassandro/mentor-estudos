@@ -136,7 +136,7 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         amanha = hoje + timedelta(days=1)
         
-        cursor.execute('UPDATE cronograma SET concluido = TRUE WHERE id = %s', (id_cronograma,))
+        cursor.execute('UPDATE cronograma SET concluido = TRUE, data_agendada = %s WHERE id = %s', (hoje, id_cronograma,))
         cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
         resultado = cursor.fetchone()
         
@@ -181,8 +181,9 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if acertos > total:
         acertos = total
         
-    cursor.execute('UPDATE cronograma SET concluido = TRUE, acertos = %s, total_questoes = %s WHERE id = %s', 
-                   (acertos, total, id_cronograma))
+   # Carimba a data de HOJE na tarefa que você acabou de matar!
+    cursor.execute('UPDATE cronograma SET concluido = TRUE, acertos = %s, total_questoes = %s, data_agendada = %s WHERE id = %s', 
+                   (acertos, total, hoje, id_cronograma))
     
     cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
     resultado = cursor.fetchone()
