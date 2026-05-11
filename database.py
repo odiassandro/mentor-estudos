@@ -181,12 +181,15 @@ def recalcular_cronograma_futuro(usuario_id):
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
         horas_semanais = config[0] if config else 14
-        dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else []
         
-        limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
+        # PROTEÇÃO 1: Tratar dias bloqueados à prova de falhas (evita crash se tiver espaço vazio)
+        dias_bloqueados = []
+        if config[1]:
+            dias_bloqueados = [int(d.strip()) for d in str(config[1]).split(',') if d.strip().isdigit()]
+        
+        limite_horas_dia = float(horas_semanais) / max(1, 7 - len(dias_bloqueados))
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         
-        # Puxamos a data original da tarefa também (c.data_agendada)!
         cursor.execute('''
             SELECT c.id_topico, c.tipo_atividade, c.data_agendada 
             FROM cronograma c
@@ -211,19 +214,32 @@ def recalcular_cronograma_futuro(usuario_id):
         for agendamento in agendamentos_futuros:
             id_topico = agendamento[0]
             tipo_atividade = agendamento[1]
-            data_alvo = agendamento[2] # A data calculada originalmente
+            data_alvo = agendamento[2]
+            
+            # PROTEÇÃO 2: Se a data vier nula, texto ou bugada, ele conserta sozinho
+            if not data_alvo:
+                data_alvo = hoje
+            elif hasattr(data_alvo, 'date'):
+                data_alvo = data_alvo.date()
+            elif isinstance(data_alvo, str):
+                try:
+                    data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
+                except:
+                    data_alvo = hoje
+            
             tempo_desta_atividade = 1.0 if tipo_atividade == 'Estudo' else 0.5
             
-            # --- A GENIALIDADE TÁ AQUI ---
             if tipo_atividade == 'Estudo':
-                data_atual = hoje # Estudo: tenta preencher qualquer buraco a partir de HOJE
+                data_atual = hoje 
             else:
-                data_atual = max(hoje, data_alvo) # Revisão: respeita a data espaçada, não adianta!
-            # -----------------------------
+                data_atual = max(hoje, data_alvo) 
 
             dia_encontrado = False
             
-            while not dia_encontrado:
+            # PROTEÇÃO 3: Limite de tentativas para o Streamlit não congelar (max 365 dias)
+            tentativas = 0 
+            while not dia_encontrado and tentativas < 365:
+                tentativas += 1
                 if data_atual.weekday() in dias_bloqueados:
                     data_atual += timedelta(days=1)
                     continue
@@ -242,19 +258,22 @@ def recalcular_cronograma_futuro(usuario_id):
                 
                 horas_ocupadas = float(cursor.fetchone()[0])
                 
-                # Arredondando para evitar que o Python ache que 1.5 + 0.5 é 2.00000001 e pule o dia!
                 if round(horas_ocupadas + tempo_desta_atividade, 2) <= round(limite_horas_dia, 2): 
                     dia_encontrado = True
                 else:
                     data_atual += timedelta(days=1)
                     
-            cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                           (id_topico, tipo_atividade, data_atual))
+            if dia_encontrado:
+                cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
+                               (id_topico, tipo_atividade, data_atual))
                            
         conn.commit()
         return True
     except Exception as e:
         print(f"Erro ao recalcular: {e}")
+        # O GRITO DE SOCORRO: Agora o erro aparece na tela!
+        import streamlit as st
+        st.error(f"☠️ O robô tropeçou feio: {e}") 
         return False
     finally:
         conn.close()
