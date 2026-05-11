@@ -180,15 +180,15 @@ def recalcular_cronograma_futuro(usuario_id):
     try:
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
-        horas_semanais = config[0] if config else 24
+        horas_semanais = config[0] if config else 14
         dias_bloqueados = [int(d) for d in config[1].split(',')] if config[1] else []
         
         limite_horas_dia = horas_semanais / max(1, 7 - len(dias_bloqueados))
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         
-        # A GRANDE MUDANÇA: Tiramos o ">= hoje". O robô cata TUDO que não foi concluído!
+        # Puxamos a data original da tarefa também (c.data_agendada)!
         cursor.execute('''
-            SELECT c.id_topico, c.tipo_atividade 
+            SELECT c.id_topico, c.tipo_atividade, c.data_agendada 
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
@@ -201,7 +201,6 @@ def recalcular_cronograma_futuro(usuario_id):
         if not agendamentos_futuros:
             return True
             
-        # O aspirador apaga o passado, o presente e o futuro de tudo que tá pendente
         cursor.execute('''
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
@@ -209,13 +208,19 @@ def recalcular_cronograma_futuro(usuario_id):
             AND d.usuario_id = %s AND c.concluido = FALSE
         ''', (usuario_id,))
         
-        data_atual = hoje
-        
         for agendamento in agendamentos_futuros:
             id_topico = agendamento[0]
             tipo_atividade = agendamento[1]
+            data_alvo = agendamento[2] # A data calculada originalmente
             tempo_desta_atividade = 1.0 if tipo_atividade == 'Estudo' else 0.5
             
+            # --- A GENIALIDADE TÁ AQUI ---
+            if tipo_atividade == 'Estudo':
+                data_atual = hoje # Estudo: tenta preencher qualquer buraco a partir de HOJE
+            else:
+                data_atual = max(hoje, data_alvo) # Revisão: respeita a data espaçada, não adianta!
+            # -----------------------------
+
             dia_encontrado = False
             
             while not dia_encontrado:
@@ -223,8 +228,6 @@ def recalcular_cronograma_futuro(usuario_id):
                     data_atual += timedelta(days=1)
                     continue
                 
-                # Como nós limpamos o passado, não tem mais dívida antiga.
-                # O robô só soma as horas do dia atual que ele está tentando preencher.
                 cursor.execute('''
                     SELECT COALESCE(SUM(
                         CASE 
@@ -239,7 +242,8 @@ def recalcular_cronograma_futuro(usuario_id):
                 
                 horas_ocupadas = float(cursor.fetchone()[0])
                 
-                if (horas_ocupadas + tempo_desta_atividade) <= limite_horas_dia: 
+                # Arredondando para evitar que o Python ache que 1.5 + 0.5 é 2.00000001 e pule o dia!
+                if round(horas_ocupadas + tempo_desta_atividade, 2) <= round(limite_horas_dia, 2): 
                     dia_encontrado = True
                 else:
                     data_atual += timedelta(days=1)
