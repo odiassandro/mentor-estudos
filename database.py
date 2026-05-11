@@ -173,16 +173,15 @@ def salvar_disciplina_completa(usuario_id, nome, dificuldade, peso, lista_topico
     finally:
         conn.close()
 
-
 def recalcular_cronograma_futuro(usuario_id):
     conn = conectar()
     cursor = conn.cursor()
     try:
+        # 1. Pega as configurações
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
         horas_semanais = config[0] if config else 14
         
-        # PROTEÇÃO 1: Tratar dias bloqueados à prova de falhas (evita crash se tiver espaço vazio)
         dias_bloqueados = []
         if config[1]:
             dias_bloqueados = [int(d.strip()) for d in str(config[1]).split(',') if d.strip().isdigit()]
@@ -190,6 +189,7 @@ def recalcular_cronograma_futuro(usuario_id):
         limite_horas_dia = float(horas_semanais) / max(1, 7 - len(dias_bloqueados))
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         
+        # 2. Busca TUDO que tá pendente de uma vez
         cursor.execute('''
             SELECT c.id_topico, c.tipo_atividade, c.data_agendada 
             FROM cronograma c
@@ -204,6 +204,7 @@ def recalcular_cronograma_futuro(usuario_id):
         if not agendamentos_futuros:
             return True
             
+        # 3. Apaga os pendentes do banco
         cursor.execute('''
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
@@ -211,21 +212,34 @@ def recalcular_cronograma_futuro(usuario_id):
             AND d.usuario_id = %s AND c.concluido = FALSE
         ''', (usuario_id,))
         
+        # 4. Busca como está a ocupação dos dias APENAS com tarefas que você JÁ CONCLUIU
+        cursor.execute('''
+            SELECT c.data_agendada, SUM(CASE WHEN c.tipo_atividade = 'Estudo' THEN 1.0 ELSE 0.5 END)
+            FROM cronograma c
+            JOIN topicos t ON c.id_topico = t.id
+            JOIN disciplinas d ON t.id_disciplina = d.id
+            WHERE d.usuario_id = %s AND c.data_agendada >= %s AND c.concluido = TRUE
+            GROUP BY c.data_agendada
+        ''', (usuario_id, hoje))
+        
+        # Cria um "dicionário" na memória do Python para anotar as horas (super rápido)
+        ocupacao_dias = {}
+        for linha in cursor.fetchall():
+            ocupacao_dias[linha[0]] = float(linha[1])
+            
+        novos_agendamentos = []
+        
+        # 5. O processamento in-memory (Não usa a internet, roda na velocidade da luz)
         for agendamento in agendamentos_futuros:
             id_topico = agendamento[0]
             tipo_atividade = agendamento[1]
             data_alvo = agendamento[2]
             
-            # PROTEÇÃO 2: Se a data vier nula, texto ou bugada, ele conserta sozinho
-            if not data_alvo:
-                data_alvo = hoje
-            elif hasattr(data_alvo, 'date'):
-                data_alvo = data_alvo.date()
+            if not data_alvo: data_alvo = hoje
+            elif hasattr(data_alvo, 'date'): data_alvo = data_alvo.date()
             elif isinstance(data_alvo, str):
-                try:
-                    data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
-                except:
-                    data_alvo = hoje
+                try: data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
+                except: data_alvo = hoje
             
             tempo_desta_atividade = 1.0 if tipo_atividade == 'Estudo' else 0.5
             
@@ -235,45 +249,41 @@ def recalcular_cronograma_futuro(usuario_id):
                 data_atual = max(hoje, data_alvo) 
 
             dia_encontrado = False
-            
-            # PROTEÇÃO 3: Limite de tentativas para o Streamlit não congelar (max 365 dias)
             tentativas = 0 
+            
             while not dia_encontrado and tentativas < 365:
                 tentativas += 1
                 if data_atual.weekday() in dias_bloqueados:
                     data_atual += timedelta(days=1)
                     continue
                 
-                cursor.execute('''
-                    SELECT COALESCE(SUM(
-                        CASE 
-                            WHEN c.tipo_atividade = 'Estudo' THEN 1.0
-                            ELSE 0.5
-                        END
-                    ), 0) FROM cronograma c
-                    JOIN topicos t ON c.id_topico = t.id
-                    JOIN disciplinas d ON t.id_disciplina = d.id
-                    WHERE d.usuario_id = %s AND c.data_agendada = %s
-                ''', (usuario_id, data_atual))
-                
-                horas_ocupadas = float(cursor.fetchone()[0])
+                # Consulta a prancheta do Python em vez de ir nos EUA
+                horas_ocupadas = ocupacao_dias.get(data_atual, 0.0)
                 
                 if round(horas_ocupadas + tempo_desta_atividade, 2) <= round(limite_horas_dia, 2): 
                     dia_encontrado = True
+                    # Atualiza a prancheta
+                    ocupacao_dias[data_atual] = horas_ocupadas + tempo_desta_atividade
                 else:
                     data_atual += timedelta(days=1)
                     
             if dia_encontrado:
-                cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                               (id_topico, tipo_atividade, data_atual))
+                # Coloca no caminhão de entrega
+                novos_agendamentos.append((id_topico, tipo_atividade, data_atual))
+                
+        # 6. Manda o caminhão de entrega de uma vez só! (Batch Insert)
+        if novos_agendamentos:
+            cursor.executemany(
+                'INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
+                novos_agendamentos
+            )
                            
         conn.commit()
         return True
     except Exception as e:
-        print(f"Erro ao recalcular: {e}")
-        # O GRITO DE SOCORRO: Agora o erro aparece na tela!
+        print(f"Erro ao recalcular (Turbo): {e}")
         import streamlit as st
-        st.error(f"☠️ O robô tropeçou feio: {e}") 
+        st.error(f"☠️ O robô turbo tropeçou: {e}") 
         return False
     finally:
         conn.close()
