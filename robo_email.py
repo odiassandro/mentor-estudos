@@ -46,15 +46,17 @@ def mandar_email():
         ''', (hoje,))
         atrasadas = cursor.fetchone()[0]
         
-        # 4. Pega o Streak (Tenta pegar da tabela config, se não achar, fica 0)
+      # 4. Pega o Streak (Tenta pegar da tabela config, se não achar, fica 0)
         streak = 0
         try:
-            cursor.execute('SELECT streak FROM configuracao LIMIT 1')
+            # Agora ele ignora testes antigos e pega o seu streak verdadeiro!
+            cursor.execute('SELECT streak FROM configuracao ORDER BY streak DESC NULLS LAST LIMIT 1')
             resultado = cursor.fetchone()
-            if resultado and resultado[0]: 
+            if resultado and resultado[0] is not None: 
                 streak = resultado[0]
-        except:
-            conn.rollback() # Segue a vida se a coluna não existir
+        except Exception as e:
+            print(f"Erro ao buscar streak: {e}") # Se o nome da coluna for diferente, ele avisa lá no log do GitHub!
+            conn.rollback()
             
         conn.close()
 
