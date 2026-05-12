@@ -189,25 +189,39 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if not resultado: return
     id_topico = resultado[0]
     
+    # === A MÁGICA DO EFEITO DOMINÓ ===
+    proxima_ativ = None
+    dias_add = 0
+    
     if tipo_atividade == 'Estudo':
         cursor.execute('UPDATE topicos SET estudado = TRUE WHERE id = %s', (id_topico,))
-        
-        # --- O ESCUDO ANTI-CLONAGEM AQUI! ---
-        cursor.execute("DELETE FROM cronograma WHERE id_topico = %s AND concluido = FALSE AND tipo_atividade != 'Estudo'", (id_topico,))
-        # ------------------------------------
-        
-        atividades_futuras = [
-            ('Revisão 1d', hoje + timedelta(days=1)),
-            ('Questões 3d', hoje + timedelta(days=3)),
-            ('Revisão 7d', hoje + timedelta(days=7)),
-            ('Questões 11d', hoje + timedelta(days=11)),
-            ('Questões 28d', hoje + timedelta(days=28)),
-            ('Revisão 30d', hoje + timedelta(days=30))
-        ]
-        
-        for ativ, data in atividades_futuras:
-            cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                           (id_topico, ativ, data))
+        proxima_ativ = 'Revisão 1d'
+        dias_add = 1
+    elif tipo_atividade == 'Revisão 1d':
+        proxima_ativ = 'Questões 3d'
+        dias_add = 2  # 1 dia + 2 dias = fecha os 3 dias certinho
+    elif tipo_atividade == 'Questões 3d':
+        proxima_ativ = 'Revisão 7d'
+        dias_add = 4
+    elif tipo_atividade == 'Revisão 7d':
+        proxima_ativ = 'Questões 11d'
+        dias_add = 4
+    elif tipo_atividade == 'Questões 11d':
+        proxima_ativ = 'Questões 28d'
+        dias_add = 17
+    elif tipo_atividade == 'Questões 28d':
+        proxima_ativ = 'Revisão 30d'
+        dias_add = 2
+
+    # Se a tarefa gerar uma continuação, ele cria a próxima peça do dominó!
+    if proxima_ativ:
+        # Escudo: Apaga qualquer sujeira antiga dessa mesma etapa
+        cursor.execute('DELETE FROM cronograma WHERE id_topico = %s AND tipo_atividade = %s AND concluido = FALSE', 
+                       (id_topico, proxima_ativ))
+        # Agenda o próximo passo perfeitamente espaçado
+        cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
+                       (id_topico, proxima_ativ, hoje + timedelta(days=dias_add)))
+    # ==================================
             
     cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
     
