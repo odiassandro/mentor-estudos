@@ -1,0 +1,29 @@
+name: Despertador do Mentor
+
+on:
+  schedule:
+    - cron: '0 9 * * *' # Roda às 9h UTC (que equivale às 6h da manhã em Brasília)
+  workflow_dispatch: # Isso cria um botão mágico pra gente testar a qualquer momento!
+
+jobs:
+  mandar_email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pegar os códigos do repositório
+        uses: actions/checkout@v3
+
+      - name: Preparar o Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar ferramentas
+        run: pip install psycopg2-binary tzdata
+
+      - name: Disparar o Carteiro!
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          EMAIL_REMETENTE: ${{ secrets.EMAIL_REMETENTE }}
+          EMAIL_SENHA: ${{ secrets.EMAIL_SENHA }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+        run: python robo_email.py
