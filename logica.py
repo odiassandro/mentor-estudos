@@ -190,8 +190,13 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if not resultado: return
     id_topico = resultado[0]
     
-    if tipo_atividade == 'Estudo':
+if tipo_atividade == 'Estudo':
         cursor.execute('UPDATE topicos SET estudado = TRUE WHERE id = %s', (id_topico,))
+        
+        # --- O ESCUDO ANTI-CLONAGEM AQUI! ---
+        # Ele apaga qualquer revisão futura pendente desse mesmo tópico antes de gerar as novas
+        cursor.execute("DELETE FROM cronograma WHERE id_topico = %s AND concluido = FALSE AND tipo_atividade != 'Estudo'", (id_topico,))
+        # ------------------------------------
         
         atividades_futuras = [
             ('Revisão 1d', hoje + timedelta(days=1)),
