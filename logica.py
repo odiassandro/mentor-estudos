@@ -181,7 +181,6 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if acertos > total:
         acertos = total
         
-   # Carimba a data de HOJE na tarefa que você acabou de matar!
     cursor.execute('UPDATE cronograma SET concluido = TRUE, acertos = %s, total_questoes = %s, data_agendada = %s WHERE id = %s', 
                    (acertos, total, hoje, id_cronograma))
     
@@ -190,11 +189,10 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if not resultado: return
     id_topico = resultado[0]
     
-if tipo_atividade == 'Estudo':
+    if tipo_atividade == 'Estudo':
         cursor.execute('UPDATE topicos SET estudado = TRUE WHERE id = %s', (id_topico,))
         
         # --- O ESCUDO ANTI-CLONAGEM AQUI! ---
-        # Ele apaga qualquer revisão futura pendente desse mesmo tópico antes de gerar as novas
         cursor.execute("DELETE FROM cronograma WHERE id_topico = %s AND concluido = FALSE AND tipo_atividade != 'Estudo'", (id_topico,))
         # ------------------------------------
         
@@ -223,16 +221,12 @@ if tipo_atividade == 'Estudo':
     
     if pendentes == 0:
         cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
-          
-    # --- AQUI ESTÁ O PULO DO GATO (O STREAK) ---
+        
     database.atualizar_streak_e_xp(usuario_id, 10)
-    # -------------------------------------------
         
     conn.commit()
     conn.close()
     
-    # --- O GATILHO QUE FALTAVA ---
-    # Agora, ao concluir QUALQUER matéria, o robô vai arrumar o calendário!
     database.recalcular_cronograma_futuro(usuario_id)
 
 def obter_disciplinas_do_usuario(usuario_id):
