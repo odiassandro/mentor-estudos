@@ -103,13 +103,11 @@ with aba_calendario:
     df_agenda = logica.obter_agenda_pendente(usuario_id)
     hoje = datetime.now(ZoneInfo('America/Bahia')).date()
 
-    # 1. Primeiro a gente verifica se tem matéria atrasada ou pendente hoje
     if not df_agenda.empty:
         df_pendente_hoje = df_agenda[pd.to_datetime(df_agenda['data_agendada']).dt.date <= hoje]
     else:
         df_pendente_hoje = pd.DataFrame() 
 
-    # 2. AS FRASES DE HUMILHAÇÃO (OU GLÓRIA) ENTRAM AQUI NO TOPO!
     if df_pendente_hoje.empty:
         st.success("Sua missão de HOJE está cumprida! Descanse agora guerreiro.")
         st.markdown(f"<div style='font-size: 20px; font-weight: bold; color: #2ca02c;'>{logica.frase_motivacional(sucesso=True)}</div>", unsafe_allow_html=True)
@@ -118,8 +116,6 @@ with aba_calendario:
 
     st.divider()
 
-    # 3. Daqui pra baixo continua a montagem normal da semana...
- 
     datas_semana = [hoje + timedelta(days=i) for i in range(7)]
     dias_semana_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     cols = st.columns(7)
@@ -134,18 +130,10 @@ with aba_calendario:
     st.markdown("<br>", unsafe_allow_html=True)
 
     if not df_agenda.empty:
-        df_pendente_hoje = df_agenda[pd.to_datetime(df_agenda['data_agendada']).dt.date <= hoje]
-    else:
-        df_pendente_hoje = pd.DataFrame() 
-
-    if not df_agenda.empty:
         df_agenda['data_agendada'] = pd.to_datetime(df_agenda['data_agendada']).dt.date
-        
-        def concluir_tarefa(id_tarefa, tipo_ativ, topico_nome, acertos, total, u_id):
-            logica.concluir_tarefa_e_gerar_revisoes(id_tarefa, tipo_ativ, topico_nome, acertos, total, u_id)
 
         cores = {
-            'Estudo': '#00b4d8',           
+            'Estudo': '#00b4d8',            
             'Revisão 1d': '#ff006e',       
             'Revisão 7d': '#ff006e',
             'Revisão 30d': '#ff006e',
@@ -187,36 +175,44 @@ with aba_calendario:
                 
                 if 'Questões' in row['tipo_atividade']:
                     with st.popover("✅ Lançar Acertos", use_container_width=True):
-                        st.write("Métricas da Bateria:")
-                        qtd_acertos = st.number_input("Acertos", min_value=0, step=1, key=f"ac_{row['id']}")
-                        qtd_total = st.number_input("Total Feito", min_value=1, step=1, key=f"tot_{row['id']}")
-                        st.button("Salvar e Concluir", key=f"btn_save_{row['id']}", 
-                                  on_click=concluir_tarefa, 
-                                  args=(row['id'], row['tipo_atividade'], row['topico'], qtd_acertos, qtd_total, usuario_id), 
-                                  use_container_width=True, type="primary")
+                        # TURBO UI: st.form impede a latência de digitação!
+                        with st.form(key=f"form_acertos_{row['id']}"):
+                            st.write("Métricas da Bateria:")
+                            qtd_acertos = st.number_input("Acertos", min_value=0, step=1)
+                            qtd_total = st.number_input("Total Feito", min_value=1, step=1)
+                            submit_acertos = st.form_submit_button("Salvar e Concluir", use_container_width=True, type="primary")
+                            
+                            if submit_acertos:
+                                with st.spinner("Registrando sua glória..."):
+                                    logica.concluir_tarefa_e_gerar_revisoes(row['id'], row['tipo_atividade'], row['topico'], qtd_acertos, qtd_total, usuario_id)
+                                st.toast("Bateria de questões registrada! 🔥")
+                                st.rerun()
                 
                 elif row['tipo_atividade'] == 'Estudo':
                     with st.popover("🎯 Ação da Meta", use_container_width=True):
                         st.write("Status do Assunto:")
-                        st.button("✅ Dominei (Gerar Revisões)", key=f"btn_feito_{row['id']}", 
-                                  on_click=concluir_tarefa, 
-                                  args=(row['id'], row['tipo_atividade'], row['topico'], 0, 0, usuario_id), 
-                                  use_container_width=True, type="primary")
-                        st.button("⏳ Estudei, mas não acabei", key=f"btn_falta_{row['id']}", 
-                                  on_click=logica.estudei_mas_nao_terminei, 
-                                  args=(row['id'], usuario_id), 
-                                  use_container_width=True)
+                        if st.button("✅ Dominei (Gerar Revisões)", key=f"btn_feito_{row['id']}", use_container_width=True, type="primary"):
+                            with st.spinner("O trator está trabalhando..."):
+                                logica.concluir_tarefa_e_gerar_revisoes(row['id'], row['tipo_atividade'], row['topico'], 0, 0, usuario_id)
+                            st.toast("Revisões geradas com sucesso!")
+                            st.rerun()
+                            
+                        if st.button("⏳ Estudei, mas não acabei", key=f"btn_falta_{row['id']}", use_container_width=True):
+                            with st.spinner("Adiavelmente..."):
+                                logica.estudei_mas_nao_terminei(row['id'], usuario_id)
+                            st.toast("Tarefa adiada para o próximo buraco.")
+                            st.rerun()
                 else:
-                    st.button(f"✅ Feito", key=f"btn_{row['id']}", 
-                              on_click=concluir_tarefa, 
-                              args=(row['id'], row['tipo_atividade'], row['topico'], 0, 0, usuario_id), 
-                              use_container_width=True)
+                    if st.button(f"✅ Feito", key=f"btn_{row['id']}", use_container_width=True):
+                        with st.spinner("Marcando como concluído..."):
+                            logica.concluir_tarefa_e_gerar_revisoes(row['id'], row['tipo_atividade'], row['topico'], 0, 0, usuario_id)
+                        st.toast("Mais uma pra conta! 🚀")
+                        st.rerun()
                 
                 st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
 with aba_edital:
     st.header("Seu Edital Verticalizado")
-    st.write("Acompanhe o que já foi dominado e o que ainda falta desbravar.")
     df_edital = logica.obter_edital_verticalizado(usuario_id)
     if not df_edital.empty:
         disciplinas = df_edital['disciplina'].unique()
@@ -227,13 +223,11 @@ with aba_edital:
                     if row['estudado']:
                         st.markdown(f"✅ <span style='text-decoration: line-through; color: #888888;'>{row['topico']}</span>", unsafe_allow_html=True)
                     else:
-                        # Removi o "color: #ffffff;" para a mágica acontecer!
                         st.markdown(f"⏳ <span>{row['topico']}</span>", unsafe_allow_html=True)
     else:
-        st.info("Nenhuma disciplina cadastrada ainda. Vá na aba de Configuração Inicial!")
+        st.info("Nenhuma disciplina cadastrada ainda.")
         
 with aba_config:
-    # 1. PARTE NOVA: ROTINA E PLANTÕES
     st.header("Sua Rotina e Limites")
     
     col_h, col_d = st.columns(2)
@@ -246,7 +240,6 @@ with aba_config:
         selecionados = []
         col_dias = st.columns(7)
         for i, nome in enumerate(dias_nomes):
-            # Deixa Terça (1) e Quinta (3) marcados por padrão pra você
             padrao = True if i in [1, 3] else False
             if col_dias[i].checkbox(nome, value=padrao, key=f"dia_{i}"):
                 selecionados.append(str(i))
@@ -263,56 +256,51 @@ with aba_config:
         conn.commit()
         conn.close()
         
-        # Agora o robô reorganiza o futuro automaticamente!
-        st.info("Reorganizando o seu cronograma... Aguarde.")
-        sucesso = database.recalcular_cronograma_futuro(usuario_id)
+        with st.spinner("Reorganizando o seu cronograma... Aguarde."):
+            sucesso = database.recalcular_cronograma_futuro(usuario_id)
         
         if sucesso:
-            st.success("Rotina atualizada e calendário recalculado! Suas férias estão a salvo.")
+            st.success("Rotina atualizada!")
             st.rerun()
         else:
             st.error("Ops, deu um erro ao recalcular.")
 
     st.divider()
     
-    # 2. PARTE ANTIGA: CADASTRAR MATÉRIAS
     st.header("Cadastrar Novo Edital")
     with st.form("form_disciplina", clear_on_submit=True):
         nome_disc = st.text_input("Nome da Disciplina")
         col1, col2 = st.columns(2)
         with col1:
-            dificuldade = st.slider("Nível de Dificuldade", 1, 3, 2, help="1-Fácil, 2-Médio, 3-Difícil")
+            dificuldade = st.slider("Nível de Dificuldade", 1, 3, 2)
         with col2:
-            peso = st.slider("Peso da Matéria na Prova", 1, 5, 1, help="De 1 a 5")
-        topicos_texto = st.text_area("Tópicos do Edital (Digite UM tópico por linha e dê Enter)")
+            peso = st.slider("Peso da Matéria na Prova", 1, 5, 1)
+        topicos_texto = st.text_area("Tópicos do Edital (UM por linha)")
         
         if st.form_submit_button("Salvar Disciplina"):
             if nome_disc and topicos_texto:
                 lista_de_topicos = topicos_texto.split('\n')
-                sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, dificuldade, peso, lista_de_topicos)
+                with st.spinner("Salvando disciplina e gerando cronograma..."):
+                    sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, dificuldade, peso, lista_de_topicos)
                 if sucesso:
-                    st.success(f"Disciplina '{nome_disc}' salva! Vá para o Calendário.")
+                    st.success(f"Disciplina '{nome_disc}' salva!")
                 else:
                     st.error("Erro ao salvar.")
             else:
-                st.warning("Preencha o nome da disciplina e pelo menos um tópico.")
+                st.warning("Preencha todos os campos.")
                 
     st.divider()
      
-    # --- NOVA SESSÃO DE GERENCIAMENTO (A LIXEIRA) ---
     st.header("🗑️ Gerenciar Edital")
-    st.write("Cansou de um concurso? Apague a disciplina inteira aqui (Isso apagará todo o histórico e revisões dela).")
-    
     df_disciplinas = logica.obter_disciplinas_do_usuario(usuario_id)
     
     if not df_disciplinas.empty:
         for index, row in df_disciplinas.iterrows():
             col_nome, col_btn = st.columns([4, 1])
             col_nome.markdown(f"**📚 {row['nome']}**")
-            
-            # Botão de excluir para cada matéria
             if col_btn.button("❌ Excluir", key=f"del_{row['id']}", use_container_width=True):
-                logica.deletar_disciplina(row['id'], usuario_id)
-                st.rerun() # Recarrega a página na hora para a matéria sumir
+                with st.spinner("Limpando histórico..."):
+                    logica.deletar_disciplina(row['id'], usuario_id)
+                st.rerun()
     else:
-        st.info("Nenhuma disciplina cadastrada para excluir.")
+        st.info("Nenhuma disciplina cadastrada.")
