@@ -213,6 +213,16 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
         proxima_ativ = 'Revisão 30d'
         dias_add = 2
 
+    # === 🚨 SISTEMA UTI (O TOMBO DO ANKI) 🚨 ===
+    # Só entra aqui se você lançou questões (onde o total > 0)
+    if total > 0:
+        taxa = (acertos / total) * 100
+        if taxa < 70:
+            # Se o rendimento foi ruim, cancelamos o avanço!
+            # Volta para a Revisão 1d (teoria urgente) para amanhã.
+            proxima_ativ = 'Revisão 1d'
+            dias_add = 1
+
     # Se a tarefa gerar uma continuação, ele cria a próxima peça do dominó!
     if proxima_ativ:
         # Escudo: Apaga qualquer sujeira antiga dessa mesma etapa
