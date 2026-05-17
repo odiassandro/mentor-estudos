@@ -177,7 +177,7 @@ def recalcular_cronograma_futuro(usuario_id):
     conn = conectar()
     cursor = conn.cursor()
     try:
-        # 1. Pega as configurações
+        # 1. Pega as configurações e define os limites
         cursor.execute('SELECT horas_semanais, dias_bloqueados FROM configuracao WHERE usuario_id = %s', (usuario_id,))
         config = cursor.fetchone()
         horas_semanais = config[0] if config else 14
@@ -187,6 +187,8 @@ def recalcular_cronograma_futuro(usuario_id):
             dias_bloqueados = [int(d.strip()) for d in str(config[1]).split(',') if d.strip().isdigit()]
         
         limite_horas_dia = float(horas_semanais) / max(1, 7 - len(dias_bloqueados))
+        limite_estudo_dia = limite_horas_dia / 2.0 # A COTA VIP: Estudo só pode ocupar até 50% do dia para não matar as revisões antigas!
+        
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         
         # 2. Busca TUDO que tá pendente de uma vez
@@ -196,14 +198,44 @@ def recalcular_cronograma_futuro(usuario_id):
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
             WHERE d.usuario_id = %s AND c.concluido = FALSE
-            ORDER BY c.data_agendada, ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id), d.id
         ''', (usuario_id,))
         
-        agendamentos_futuros = cursor.fetchall()
+        agendamentos_crus = cursor.fetchall()
         
-        if not agendamentos_futuros:
+        if not agendamentos_crus:
             return True
             
+        # ==========================================
+        # A MÁGICA DA PRIORIDADE (FURA-FILA)
+        # ==========================================
+        agendamentos_formatados = []
+        for ag in agendamentos_crus:
+            id_topico = ag[0]
+            tipo_atividade = ag[1]
+            data_alvo = ag[2]
+            
+            if not data_alvo: data_alvo = hoje
+            elif hasattr(data_alvo, 'date'): data_alvo = data_alvo.date()
+            elif isinstance(data_alvo, str):
+                try: data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
+                except: data_alvo = hoje
+            
+            # A HIERARQUIA DE SOBREVIVÊNCIA
+            if tipo_atividade == 'Revisão 1d':
+                prioridade = 1
+            elif tipo_atividade == 'Questões 3d':
+                prioridade = 2
+            elif tipo_atividade == 'Estudo':
+                prioridade = 3
+                data_alvo = hoje # Matéria nova SEMPRE quer entrar no primeiro buraco disponível de hoje em diante
+            else:
+                prioridade = 4
+                
+            agendamentos_formatados.append((prioridade, data_alvo, id_topico, tipo_atividade))
+            
+        # Ordena PRIMEIRO pela Prioridade (VIPs na frente), DEPOIS pela Data Alvo
+        agendamentos_formatados.sort(key=lambda x: (x[0], x[1], x[2]))
+
         # 3. Apaga os pendentes do banco
         cursor.execute('''
             DELETE FROM cronograma c
@@ -212,41 +244,36 @@ def recalcular_cronograma_futuro(usuario_id):
             AND d.usuario_id = %s AND c.concluido = FALSE
         ''', (usuario_id,))
         
-        # 4. Busca como está a ocupação dos dias APENAS com tarefas que você JÁ CONCLUIU
+        # 4. Busca ocupação separada (Estudo x Revisão) das tarefas JÁ CONCLUÍDAS
         cursor.execute('''
-            SELECT c.data_agendada, SUM(CASE WHEN c.tipo_atividade = 'Estudo' THEN 1.0 ELSE 0.5 END)
+            SELECT c.data_agendada, c.tipo_atividade
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
             WHERE d.usuario_id = %s AND c.data_agendada >= %s AND c.concluido = TRUE
-            GROUP BY c.data_agendada
         ''', (usuario_id, hoje))
         
-        # Cria um "dicionário" na memória do Python para anotar as horas (super rápido)
-        ocupacao_dias = {}
+        ocupacao_estudo = {}
+        ocupacao_revisao = {}
         for linha in cursor.fetchall():
-            ocupacao_dias[linha[0]] = float(linha[1])
+            d_ag = linha[0]
+            t_ativ = linha[1]
+            if t_ativ == 'Estudo':
+                ocupacao_estudo[d_ag] = ocupacao_estudo.get(d_ag, 0.0) + 1.0
+            else:
+                ocupacao_revisao[d_ag] = ocupacao_revisao.get(d_ag, 0.0) + 0.5
             
         novos_agendamentos = []
         
-        # 5. O processamento in-memory (Não usa a internet, roda na velocidade da luz)
-        for agendamento in agendamentos_futuros:
-            id_topico = agendamento[0]
-            tipo_atividade = agendamento[1]
-            data_alvo = agendamento[2]
-            
-            if not data_alvo: data_alvo = hoje
-            elif hasattr(data_alvo, 'date'): data_alvo = data_alvo.date()
-            elif isinstance(data_alvo, str):
-                try: data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
-                except: data_alvo = hoje
+        # 5. O processamento in-memory
+        for ag in agendamentos_formatados:
+            prioridade = ag[0]
+            data_alvo = ag[1]
+            id_topico = ag[2]
+            tipo_atividade = ag[3]
             
             tempo_desta_atividade = 1.0 if tipo_atividade == 'Estudo' else 0.5
-            
-            if tipo_atividade == 'Estudo':
-                data_atual = hoje 
-            else:
-                data_atual = max(hoje, data_alvo) 
+            data_atual = max(hoje, data_alvo) 
 
             dia_encontrado = False
             tentativas = 0 
@@ -257,21 +284,29 @@ def recalcular_cronograma_futuro(usuario_id):
                     data_atual += timedelta(days=1)
                     continue
                 
-                # Consulta a prancheta do Python em vez de ir nos EUA
-                horas_ocupadas = ocupacao_dias.get(data_atual, 0.0)
+                h_estudo = ocupacao_estudo.get(data_atual, 0.0)
+                h_revisao = ocupacao_revisao.get(data_atual, 0.0)
+                h_total = round(h_estudo + h_revisao, 2)
                 
-                if round(horas_ocupadas + tempo_desta_atividade, 2) <= round(limite_horas_dia, 2): 
-                    dia_encontrado = True
-                    # Atualiza a prancheta
-                    ocupacao_dias[data_atual] = horas_ocupadas + tempo_desta_atividade
+                if tipo_atividade == 'Estudo':
+                    # O Estudo tem que caber no dia, mas é barrado se já bateu a cota de 50%
+                    if (round(h_total + 1.0, 2) <= round(limite_horas_dia, 2)) and (round(h_estudo + 1.0, 2) <= round(limite_estudo_dia, 2)): 
+                        dia_encontrado = True
+                        ocupacao_estudo[data_atual] = h_estudo + 1.0
+                    else:
+                        data_atual += timedelta(days=1)
                 else:
-                    data_atual += timedelta(days=1)
-                    
+                    # Revisões (Qualquer prioridade) só precisam caber no limite total do dia.
+                    if round(h_total + 0.5, 2) <= round(limite_horas_dia, 2): 
+                        dia_encontrado = True
+                        ocupacao_revisao[data_atual] = h_revisao + 0.5
+                    else:
+                        data_atual += timedelta(days=1)
+                        
             if dia_encontrado:
-                # Coloca no caminhão de entrega
                 novos_agendamentos.append((id_topico, tipo_atividade, data_atual))
                 
-        # 6. Manda o caminhão de entrega de uma vez só! (Batch Insert)
+        # 6. Manda o caminhão de entrega de uma vez só!
         if novos_agendamentos:
             cursor.executemany(
                 'INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
@@ -281,12 +316,13 @@ def recalcular_cronograma_futuro(usuario_id):
         conn.commit()
         return True
     except Exception as e:
-        print(f"Erro ao recalcular (Turbo): {e}")
+        print(f"Erro ao recalcular (Fura-Fila): {e}")
         import streamlit as st
         st.error(f"☠️ O robô turbo tropeçou: {e}") 
         return False
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
         
 def atualizar_streak_e_xp(usuario_id, xp_ganho=0):
     # Mantive o xp_ganho ali só pra não quebrar a função que você já colou no logica.py
