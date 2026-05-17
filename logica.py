@@ -285,7 +285,7 @@ def calcular_acertos_por_topico(usuario_id):
     # Calcula a porcentagem
     df['taxa_acertos'] = (df['total_acertos'] / df['total_feito']) * 100
     
-    # Aplica a sua classificação científica!
+    # Aplica a classificação
     def classificar_desempenho(taxa):
         if taxa < 70:
             return "🔴 Ruim"
@@ -301,7 +301,7 @@ def calcular_acertos_por_topico(usuario_id):
     
     # Ordena para os piores (os que precisam de atenção) aparecerem primeiro
     return df.sort_values(by='taxa_acertos')
-
+    
 def frase_motivacional(sucesso=True):
     humilhacoes = [
         "Sua vaga acabou de sorrir pra outra pessoa. Vai deixar acumular?",
