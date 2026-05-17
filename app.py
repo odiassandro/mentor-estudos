@@ -73,6 +73,7 @@ with aba_dashboard:
     col2.metric("🎯 Taxa de Acertos Global", f"{taxa_acertos}%", "Precisão")
     col3.metric("🏆 Pontuação XP", f"{pontos} pts", "Continue avançando")
     st.divider()
+    
     col_tabela, col_grafico = st.columns([1, 1])
     with col_tabela:
         st.subheader("📖 Progresso do Edital")
@@ -90,6 +91,7 @@ with aba_dashboard:
             )
         else:
             st.info("Cadastre disciplinas para ver seu progresso.")
+            
     with col_grafico:
         st.subheader("🎯 Acertos por Matéria")
         df_acertos = logica.calcular_acertos_por_materia(usuario_id)
@@ -97,6 +99,30 @@ with aba_dashboard:
             st.bar_chart(data=df_acertos.set_index('Disciplina')['Taxa'], color='#8338ec')
         else:
             st.info("Resolva sua primeira bateria de questões para gerar o gráfico!")
+
+    # -------------------------------------------------------------
+    # NOVA SEÇÃO: RAIO-X CIRÚRGICO POR TÓPICO (ANÁLISE DE LACUNAS)
+    # -------------------------------------------------------------
+    st.divider()
+    st.subheader("🔬 Raio-X por Tópico (Onde focar)")
+    st.write("Identifique suas maiores fraquezas e pontos fortes com base nas baterias resolvidas.")
+    
+    df_topicos = logica.calcular_acertos_por_topico(usuario_id)
+    
+    if not df_topicos.empty:
+        st.dataframe(
+            df_topicos[['disciplina', 'topico', 'taxa_acertos', 'status']],
+            column_config={
+                "disciplina": "Matéria",
+                "topico": "Tópico Estudado",
+                "taxa_acertos": "Desempenho",
+                "status": "Diagnóstico"
+            },
+            hide_index=True, 
+            use_container_width=True
+        )
+    else:
+        st.info("Nenhuma bateria de questões foi lançada ainda para analisar o desempenho dos tópicos.")
 
 with aba_calendario:
     st.header("Cronograma da Semana")
@@ -175,7 +201,6 @@ with aba_calendario:
                 
                 if 'Questões' in row['tipo_atividade']:
                     with st.popover("✅ Lançar Acertos", use_container_width=True):
-                        # TURBO UI: st.form impede a latência de digitação!
                         with st.form(key=f"form_acertos_{row['id']}"):
                             st.write("Métricas da Bateria:")
                             qtd_acertos = st.number_input("Acertos", min_value=0, step=1)
@@ -260,7 +285,7 @@ with aba_config:
             sucesso = database.recalcular_cronograma_futuro(usuario_id)
         
         if sucesso:
-            st.success("Rotina atualizada!")
+            st.success("Rotina updated!")
             st.rerun()
         else:
             st.error("Ops, deu um erro ao recalcular.")
@@ -281,7 +306,7 @@ with aba_config:
             if nome_disc and topicos_texto:
                 lista_de_topicos = topicos_texto.split('\n')
                 with st.spinner("Salvando disciplina e gerando cronograma..."):
-                    sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, dificuldade, peso, lista_de_topicos)
+                    sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, difficulty=dificuldade, peso=peso, lista_de_topicos=lista_de_topicos)
                 if sucesso:
                     st.success(f"Disciplina '{nome_disc}' salva!")
                 else:
