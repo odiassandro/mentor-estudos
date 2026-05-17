@@ -258,6 +258,50 @@ def deletar_disciplina(id_disciplina, usuario_id):
     conn.commit()
     conn.close()
 
+def calcular_acertos_por_topico(usuario_id):
+    import pandas as pd
+    import database
+    conn = database.conectar()
+    
+    # Busca a soma de acertos e o total de questões para cada tópico
+    query = '''
+        SELECT d.nome as disciplina, t.nome as topico, 
+               SUM(c.acertos) as total_acertos, 
+               SUM(c.total_questoes) as total_feito
+        FROM cronograma c
+        JOIN topicos t ON c.id_topico = t.id
+        JOIN disciplinas d ON t.id_disciplina = d.id
+        WHERE d.usuario_id = %s 
+          AND c.acertos IS NOT NULL 
+          AND c.total_questoes > 0
+        GROUP BY d.nome, t.nome
+    '''
+    df = pd.read_sql(query, conn, params=(usuario_id,))
+    conn.close()
+    
+    if df.empty:
+        return df
+        
+    # Calcula a porcentagem
+    df['taxa_acertos'] = (df['total_acertos'] / df['total_feito']) * 100
+    
+    # Aplica a sua classificação científica!
+    def classificar_desempenho(taxa):
+        if taxa < 70:
+            return "🔴 Ruim"
+        elif taxa <= 85:
+            return "🟡 Bom"
+        else:
+            return "🟢 Excelente"
+            
+    df['status'] = df['taxa_acertos'].apply(classificar_desempenho)
+    
+    # Arredonda a taxa para ficar bonito na tela
+    df['taxa_acertos'] = df['taxa_acertos'].round(1).astype(str) + '%'
+    
+    # Ordena para os piores (os que precisam de atenção) aparecerem primeiro
+    return df.sort_values(by='taxa_acertos')
+
 def frase_motivacional(sucesso=True):
     humilhacoes = [
         "Sua vaga acabou de sorrir pra outra pessoa. Vai deixar acumular?",
