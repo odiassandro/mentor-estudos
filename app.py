@@ -160,6 +160,7 @@ with aba_calendario:
 
         cores = {
             'Estudo': '#00b4d8',            
+            'Estudo ⏳': '#00b4d8', # <--- COR ADICIONADA AQUI!
             'Revisão 1d': '#ff006e',       
             'Revisão 7d': '#ff006e',
             'Revisão 30d': '#ff006e',
@@ -182,7 +183,7 @@ with aba_calendario:
             with cols[idx_coluna]:
                 cor_fundo = cores.get(row['tipo_atividade'], '#333333')
                 alerta_atraso = "<div style='color: #ffcc00; font-size: 10px; font-weight: bold; margin-bottom: 3px;'>⚠️ ATRASADA</div>" if atrasada else ""
-                duracao_tag = "⏱️ 60 min" if row['tipo_atividade'] == 'Estudo' else "⏱️ 30 min"
+                duracao_tag = "⏱️ 60 min" if 'Estudo' in row['tipo_atividade'] else "⏱️ 30 min"
                 
                 card_html = f"""<div style="background-color: {cor_fundo}; padding: 10px; border-radius: 8px; color: white; margin-bottom: 5px; min-height: 110px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);">
 {alerta_atraso}
@@ -213,7 +214,8 @@ with aba_calendario:
                                 st.toast("Bateria de questões registrada! 🔥")
                                 st.rerun()
                 
-                elif row['tipo_atividade'] == 'Estudo':
+                # <--- MUDANÇA NO BOTÃO AQUI! (Aceita 'Estudo' e 'Estudo ⏳')
+                elif 'Estudo' in row['tipo_atividade']:
                     with st.popover("🎯 Ação da Meta", use_container_width=True):
                         st.write("Status do Assunto:")
                         if st.button("✅ Dominei (Gerar Revisões)", key=f"btn_feito_{row['id']}", use_container_width=True, type="primary"):
