@@ -196,7 +196,7 @@ def recalcular_cronograma_futuro(usuario_id):
             SELECT c.id_topico, c.tipo_atividade, c.data_agendada, d.id,
                    ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id) as seq,
                    COALESCE(d.peso, 1) as peso, 
-                   COALESCE(d.dificuldade, 1) as dificuldade
+                   COALESCE(d.dificuldade, 1) as difficulty
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
@@ -217,8 +217,8 @@ def recalcular_cronograma_futuro(usuario_id):
             tipo_atividade = ag[1]
             data_alvo = ag[2]
             id_disciplina = ag[3]
-            seq = ag[4] # A rodada do rodízio
-            pontuacao_edital = ag[5] * ag[6] # Peso x Dificuldade
+            seq = ag[4] 
+            pontuacao_edital = ag[5] * ag[6] 
             
             if not data_alvo: data_alvo = hoje
             elif hasattr(data_alvo, 'date'): data_alvo = data_alvo.date()
@@ -226,21 +226,23 @@ def recalcular_cronograma_futuro(usuario_id):
                 try: data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
                 except: data_alvo = hoje
             
-            if tipo_atividade == 'Revisão 1d': prioridade = 1
-            elif tipo_atividade == 'Questões 3d': prioridade = 2
+            # HIERARQUIA ATUALIZADA COM O ESTUDO INCOMPLETO
+            if tipo_atividade == 'Revisão 1d': 
+                prioridade = 1
+            elif tipo_atividade == 'Questões 3d': 
+                prioridade = 2
+            elif tipo_atividade == 'Estudo ⏳': 
+                prioridade = 2.5  # FURA A FILA DE OUTROS ESTUDOS!
+                seq = 0           # Vai para o primeiro lugar do dia
+                data_alvo = hoje
             elif tipo_atividade == 'Estudo':
                 prioridade = 3
                 data_alvo = hoje 
-            else: prioridade = 4
+            else: 
+                prioridade = 4
                 
-            # Colocamos o '-pontuacao_edital' negativo para que os maiores números fiquem no topo da lista!
             agendamentos_formatados.append((prioridade, data_alvo, seq, -pontuacao_edital, id_disciplina, id_topico, tipo_atividade))
             
-        # Ordem de Agendamento: 
-        # 1º Hierarquia (Revisão 1d antes de tudo) 
-        # 2º Data Alvo 
-        # 3º Rodízio (Para não estudar tudo de uma matéria só) 
-        # 4º PesoxDificuldade (Quem for mais pesado/difícil fura a fila dentro do rodízio)
         agendamentos_formatados.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
 
         # 3. Apaga os pendentes do banco
@@ -265,7 +267,7 @@ def recalcular_cronograma_futuro(usuario_id):
         for linha in cursor.fetchall():
             d_ag = linha[0]
             t_ativ = linha[1]
-            if t_ativ == 'Estudo':
+            if 'Estudo' in t_ativ:
                 ocupacao_estudo[d_ag] = ocupacao_estudo.get(d_ag, 0.0) + 1.0
             else:
                 ocupacao_revisao[d_ag] = ocupacao_revisao.get(d_ag, 0.0) + 0.5
@@ -275,16 +277,15 @@ def recalcular_cronograma_futuro(usuario_id):
         # 5. O processamento in-memory
         for ag in agendamentos_formatados:
             data_alvo = ag[1]
-            id_topico = ag[5] # O índice mudou por causa da pontuação adicionada
+            id_topico = ag[5] 
             tipo_atividade = ag[6]
             
-            tempo_desta_atividade = 1.0 if tipo_atividade == 'Estudo' else 0.5
             data_atual = max(hoje, data_alvo) 
 
             dia_encontrado = False
             tentativas = 0 
             
-            while not dia_encontrado and tentativas < 365:
+            while not dia_encontrado and tentatives < 365:
                 tentativas += 1
                 if data_atual.weekday() in dias_bloqueados:
                     data_atual += timedelta(days=1)
@@ -294,7 +295,7 @@ def recalcular_cronograma_futuro(usuario_id):
                 h_revisao = ocupacao_revisao.get(data_atual, 0.0)
                 h_total = round(h_estudo + h_revisao, 2)
                 
-                if tipo_atividade == 'Estudo':
+                if 'Estudo' in tipo_atividade:
                     if (round(h_total + 1.0, 2) <= round(limite_horas_dia, 2)) and (round(h_estudo + 1.0, 2) <= round(limite_estudo_dia, 2)): 
                         dia_encontrado = True
                         ocupacao_estudo[data_atual] = h_estudo + 1.0
@@ -310,7 +311,6 @@ def recalcular_cronograma_futuro(usuario_id):
             if dia_encontrado:
                 novos_agendamentos.append((id_topico, tipo_atividade, data_atual))
                 
-        # 6. Manda o caminhão de entrega de uma vez só!
         if novos_agendamentos:
             cursor.executemany(
                 'INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
@@ -320,9 +320,7 @@ def recalcular_cronograma_futuro(usuario_id):
         conn.commit()
         return True
     except Exception as e:
-        print(f"Erro ao recalcular (Fura-Fila c/ Rodízio Ponderado): {e}")
-        import streamlit as st
-        st.error(f"☠️ O robô turbo tropeçou: {e}") 
+        print(f"Erro ao recalcular: {e}")
         return False
     finally:
         if 'conn' in locals():
