@@ -132,41 +132,18 @@ def obter_edital_verticalizado(usuario_id):
 def estudei_mas_nao_terminei(id_cronograma, usuario_id):
     conn = database.conectar()
     cursor = conn.cursor()
-    try:
-        hoje = datetime.now(ZoneInfo('America/Bahia')).date()
-        amanha = hoje + timedelta(days=1)
-        
-        cursor.execute('UPDATE cronograma SET concluido = TRUE, data_agendada = %s WHERE id = %s', (hoje, id_cronograma,))
-        cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
-        resultado = cursor.fetchone()
-        
-        if resultado:
-            id_topico = resultado[0]
-            # Coloca o tópico pra amanhã (ele vai entrar na fila do recalculo)
-            cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
-                           (id_topico, 'Estudo', amanha))
-            
-        cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
-        
-        cursor.execute('''
-            SELECT COUNT(*) FROM cronograma c
-            JOIN topicos t ON c.id_topico = t.id
-            JOIN disciplinas d ON t.id_disciplina = d.id
-            WHERE c.data_agendada <= %s AND c.concluido = FALSE AND d.usuario_id = %s
-        ''', (hoje, usuario_id))
-        pendentes = cursor.fetchone()[0]
-        
-        if pendentes == 0:
-            cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
-            
-        # O fogo da ofensiva continua aqui
-        database.atualizar_streak_e_xp(usuario_id, 0)
-            
-        conn.commit()
-    except Exception as e:
-        print(f"Erro ao adiar tarefa: {e}")
-    finally:
-        conn.close()
+    hoje = datetime.now(ZoneInfo('America/Bahia')).date()
+    
+    # Transforma o tipo em 'Estudo ⏳' para ativar o super fura-fila!
+    cursor.execute('''
+        UPDATE cronograma 
+        SET tipo_atividade = 'Estudo ⏳', data_agendada = %s 
+        WHERE id = %s
+    ''', (hoje, id_cronograma))
+    
+    conn.commit()
+    conn.close()
+    database.recalcular_cronograma_futuro(usuario_id)
         
     # --- A MÁGICA DA AUTOMAÇÃO AQUI! ---
     # Depois de fechar o banco, mandamos o robô arrumar a bagunça do futuro!
@@ -189,17 +166,17 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if not resultado: return
     id_topico = resultado[0]
     
-    # === A MÁGICA DO EFEITO DOMINÓ ===
     proxima_ativ = None
     dias_add = 0
     
-    if tipo_atividade == 'Estudo':
+    # ACEITA AMBOS OS TIPOS DE ESTUDO AQUI!
+    if tipo_atividade in ['Estudo', 'Estudo ⏳']:
         cursor.execute('UPDATE topicos SET estudado = TRUE WHERE id = %s', (id_topico,))
         proxima_ativ = 'Revisão 1d'
         dias_add = 1
     elif tipo_atividade == 'Revisão 1d':
         proxima_ativ = 'Questões 3d'
-        dias_add = 2  # 1 dia + 2 dias = fecha os 3 dias certinho
+        dias_add = 2  
     elif tipo_atividade == 'Questões 3d':
         proxima_ativ = 'Revisão 7d'
         dias_add = 4
@@ -213,25 +190,17 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
         proxima_ativ = 'Revisão 30d'
         dias_add = 2
 
-    # === 🚨 SISTEMA UTI (O TOMBO DO ANKI) 🚨 ===
-    # Só entra aqui se você lançou questões (onde o total > 0)
     if total > 0:
         taxa = (acertos / total) * 100
         if taxa < 70:
-            # Se o rendimento foi ruim, cancelamos o avanço!
-            # Volta para a Revisão 1d (teoria urgente) para amanhã.
             proxima_ativ = 'Revisão 1d'
             dias_add = 1
 
-    # Se a tarefa gerar uma continuação, ele cria a próxima peça do dominó!
     if proxima_ativ:
-        # Escudo: Apaga qualquer sujeira antiga dessa mesma etapa
         cursor.execute('DELETE FROM cronograma WHERE id_topico = %s AND tipo_atividade = %s AND concluido = FALSE', 
                        (id_topico, proxima_ativ))
-        # Agenda o próximo passo perfeitamente espaçado
         cursor.execute('INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
                        (id_topico, proxima_ativ, hoje + timedelta(days=dias_add)))
-    # ==================================
             
     cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
     
@@ -247,10 +216,8 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
         cursor.execute('UPDATE configuracao SET pontos = pontos + 10 WHERE usuario_id = %s', (usuario_id,))
         
     database.atualizar_streak_e_xp(usuario_id, 10)
-        
     conn.commit()
     conn.close()
-    
     database.recalcular_cronograma_futuro(usuario_id)
 
 def obter_disciplinas_do_usuario(usuario_id):
