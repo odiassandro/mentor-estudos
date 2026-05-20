@@ -285,7 +285,7 @@ def recalcular_cronograma_futuro(usuario_id):
             dia_encontrado = False
             tentativas = 0 
             
-            while not dia_encontrado and tentatives < 365:
+            while not dia_encontrado and tentativas < 365:
                 tentativas += 1
                 if data_atual.weekday() in dias_bloqueados:
                     data_atual += timedelta(days=1)
