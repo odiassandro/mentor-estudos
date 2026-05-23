@@ -196,7 +196,7 @@ def recalcular_cronograma_futuro(usuario_id):
             SELECT c.id_topico, c.tipo_atividade, c.data_agendada, d.id,
                    ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id) as seq,
                    COALESCE(d.peso, 1) as peso, 
-                   COALESCE(d.dificuldade, 1) as difficulty
+                   COALESCE(d.dificuldade, 1) as dificuldade
             FROM cronograma c
             JOIN topicos t ON c.id_topico = t.id
             JOIN disciplinas d ON t.id_disciplina = d.id
@@ -226,15 +226,14 @@ def recalcular_cronograma_futuro(usuario_id):
                 try: data_alvo = datetime.strptime(data_alvo.split(' ')[0], '%Y-%m-%d').date()
                 except: data_alvo = hoje
             
-            # HIERARQUIA ATUALIZADA COM O ESTUDO INCOMPLETO
             if tipo_atividade == 'Revisão 1d': 
                 prioridade = 1
             elif tipo_atividade == 'Questões 3d': 
                 prioridade = 2
             elif tipo_atividade == 'Estudo ⏳': 
-                prioridade = 2.5  # FURA A FILA DE OUTROS ESTUDOS!
-                seq = 0           # Vai para o primeiro lugar do dia
-                data_alvo = hoje
+                prioridade = 2.5  
+                seq = 0           
+                data_alvo = hoje + timedelta(days=1) # <--- AQUI ESTÁ A CURA! Começa a procurar de amanhã em diante
             elif tipo_atividade == 'Estudo':
                 prioridade = 3
                 data_alvo = hoje 
