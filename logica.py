@@ -130,11 +130,13 @@ def obter_edital_verticalizado(usuario_id):
     return df
 
 def estudei_mas_nao_terminei(id_cronograma, usuario_id):
+    import database
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
     conn = database.conectar()
     cursor = conn.cursor()
     hoje = datetime.now(ZoneInfo('America/Bahia')).date()
     
-    # 1. Pega o tópico da tarefa atual para poder clonar
     cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
     resultado = cursor.fetchone()
     if not resultado: 
@@ -142,29 +144,33 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
         return
     id_topico = resultado[0]
     
-    # 2. Fecha a tarefa de hoje para GARANTIR a sua 1 hora contada no limite diário!
+    # Salva a hora estudada de hoje mudando o nome da atividade
     cursor.execute('''
         UPDATE cronograma 
         SET concluido = TRUE, tipo_atividade = 'Estudo (Incompleto)', data_agendada = %s 
         WHERE id = %s
     ''', (hoje, id_cronograma))
     
-    # 3. Cria a continuação furadora de fila para amanhã
+    # Clona e cria o fura-fila para amanhã
     amanha = hoje + timedelta(days=1)
     cursor.execute('''
         INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada, concluido)
         VALUES (%s, 'Estudo ⏳', %s, FALSE)
     ''', (id_topico, amanha))
     
-    # Te dá uns pontinhos de XP pelo esforço, porque ninguém é de ferro
     cursor.execute('UPDATE configuracao SET pontos = pontos + 5 WHERE usuario_id = %s', (usuario_id,))
-    
     conn.commit()
     conn.close()
-    database.recalcular_cronograma_futuro(usuario_id)
+    
+    # ⚡ FANTASMA ASSÍNCRONO TRABALHANDO
+    import threading
+    thread_estudo = threading.Thread(target=database.recalcular_cronograma_futuro, args=(usuario_id,))
+    thread_estudo.start()
 
-
-def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df, acertos, total, usuario_id):
+def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df, acertos, total, usuario_id, recalcular=True):
+    import database
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
     conn = database.conectar()
     cursor = conn.cursor()
     hoje = datetime.now(ZoneInfo('America/Bahia')).date()
@@ -183,7 +189,6 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     proxima_ativ = None
     dias_add = 0
     
-    # ACEITA AMBOS OS TIPOS DE ESTUDO AQUI!
     if tipo_atividade in ['Estudo', 'Estudo ⏳']:
         cursor.execute('UPDATE topicos SET estudado = TRUE WHERE id = %s', (id_topico,))
         proxima_ativ = 'Revisão 1d'
@@ -232,7 +237,13 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     database.atualizar_streak_e_xp(usuario_id, 10)
     conn.commit()
     conn.close()
-    database.recalcular_cronograma_futuro(usuario_id)
+    
+    # ⚡ PROCESSO ASSÍNCRONO DO PROFESSOR SÊNIOR
+    if recalcular:
+        import threading
+        thread_recalculo = threading.Thread(target=database.recalcular_cronograma_futuro, args=(usuario_id,))
+        thread_recalculo.start()
+        
 
 def obter_disciplinas_do_usuario(usuario_id):
     conn = database.conectar()
@@ -253,8 +264,6 @@ def calcular_acertos_por_topico(usuario_id):
     import pandas as pd
     import database
     conn = database.conectar()
-    
-    # Busca a soma de acertos e o total de questões para cada tópico
     query = '''
         SELECT d.nome as disciplina, t.nome as topico, 
                SUM(c.acertos) as total_acertos, 
@@ -273,26 +282,30 @@ def calcular_acertos_por_topico(usuario_id):
     if df.empty:
         return df
         
-    # Calcula a porcentagem
     df['taxa_acertos'] = (df['total_acertos'] / df['total_feito']) * 100
     
-    # Aplica a classificação
     def classificar_desempenho(taxa):
-        if taxa < 70:
-            return "🔴 Ruim"
-        elif taxa <= 85:
-            return "🟡 Bom"
-        else:
-            return "🟢 Excelente"
+        if taxa < 70: return "🔴 Ruim"
+        elif taxa <= 85: return "🟡 Bom"
+        else: return "🟢 Excelente"
             
     df['status'] = df['taxa_acertos'].apply(classificar_desempenho)
-    
-    # Arredonda a taxa para ficar bonito na tela
     df['taxa_acertos'] = df['taxa_acertos'].round(1).astype(str) + '%'
-    
-    # Ordena para os piores (os que precisam de atenção) aparecerem primeiro
     return df.sort_values(by='taxa_acertos')
     
+# 🔄 FUNÇÃO NOVA DO RELOGINHO DA AMPULHETA
+def obter_ultima_atualizacao(usuario_id):
+    import database
+    from zoneinfo import ZoneInfo
+    conn = database.conectar()
+    cursor = conn.cursor()
+    cursor.execute('SELECT ultima_atualizacao FROM configuracao WHERE usuario_id = %s', (usuario_id,))
+    res = cursor.fetchone()
+    conn.close()
+    if res and res[0]:
+        return res[0].astimezone(ZoneInfo('America/Bahia')).strftime('%H:%M:%S (%d/%m)')
+    return "Aguardando atualização"
+
 def frase_motivacional(sucesso=True):
     humilhacoes = [
         "Sua vaga acabou de sorrir pra outra pessoa. Vai deixar acumular?",
