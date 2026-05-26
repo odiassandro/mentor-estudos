@@ -191,7 +191,7 @@ def recalcular_cronograma_futuro(usuario_id):
         
         hoje = datetime.now(ZoneInfo('America/Bahia')).date()
         
-        # 2. Busca TUDO com a Mágica do Rodízio (seq) E os Pesos/Dificuldade!
+        # 2. Busca as tarefas pendentes
         cursor.execute('''
             SELECT c.id_topico, c.tipo_atividade, c.data_agendada, d.id,
                    ROW_NUMBER() OVER(PARTITION BY d.id ORDER BY c.id) as seq,
@@ -206,11 +206,11 @@ def recalcular_cronograma_futuro(usuario_id):
         agendamentos_crus = cursor.fetchall()
         
         if not agendamentos_crus:
+            # Mesmo se não houver tarefas, atualiza o reloginho do sistema
+            cursor.execute('UPDATE configuracao SET ultima_atualizacao = CURRENT_TIMESTAMP WHERE usuario_id = %s', (usuario_id,))
+            conn.commit()
             return True
             
-        # ==========================================
-        # A MÁGICA DA PRIORIDADE + RODÍZIO PONDERADO
-        # ==========================================
         agendamentos_formatados = []
         for ag in agendamentos_crus:
             id_topico = ag[0]
@@ -233,7 +233,7 @@ def recalcular_cronograma_futuro(usuario_id):
             elif tipo_atividade == 'Estudo ⏳': 
                 prioridade = 2.5  
                 seq = 0           
-                data_alvo = hoje + timedelta(days=1) # <--- AQUI ESTÁ A CURA! Começa a procurar de amanhã em diante
+                data_alvo = hoje + timedelta(days=1) # Procura vaga a partir de amanhã
             elif tipo_atividade == 'Estudo':
                 prioridade = 3
                 data_alvo = hoje 
@@ -244,7 +244,7 @@ def recalcular_cronograma_futuro(usuario_id):
             
         agendamentos_formatados.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
 
-        # 3. Apaga os pendentes do banco
+        # 3. Apaga os pendentes antigos para realocar
         cursor.execute('''
             DELETE FROM cronograma c
             USING topicos t, disciplinas d
@@ -252,7 +252,7 @@ def recalcular_cronograma_futuro(usuario_id):
             AND d.usuario_id = %s AND c.concluido = FALSE
         ''', (usuario_id,))
         
-        # 4. Busca ocupação separada das tarefas JÁ CONCLUÍDAS
+        # 4. Calcula ocupação das tarefas já feitas
         cursor.execute('''
             SELECT c.data_agendada, c.tipo_atividade
             FROM cronograma c
@@ -272,15 +272,12 @@ def recalcular_cronograma_futuro(usuario_id):
                 ocupacao_revisao[d_ag] = ocupacao_revisao.get(d_ag, 0.0) + 0.5
             
         novos_agendamentos = []
-        
-        # 5. O processamento in-memory
         for ag in agendamentos_formatados:
             data_alvo = ag[1]
             id_topico = ag[5] 
             tipo_atividade = ag[6]
             
             data_atual = max(hoje, data_alvo) 
-
             dia_encontrado = False
             tentativas = 0 
             
@@ -315,6 +312,13 @@ def recalcular_cronograma_futuro(usuario_id):
                 'INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada) VALUES (%s, %s, %s)', 
                 novos_agendamentos
             )
+        
+        # ⚡ REGISTRA O RELOGINHO NO BANCO ANTES DE DAR O COMMIT
+        cursor.execute('''
+            UPDATE configuracao 
+            SET ultima_atualizacao = CURRENT_TIMESTAMP 
+            WHERE usuario_id = %s
+        ''', (usuario_id,))
                            
         conn.commit()
         return True
