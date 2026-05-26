@@ -48,15 +48,23 @@ if st.session_state['usuario_id'] is None:
                 else:
                     st.warning("Preencha todos os campos.")
     
-    st.stop() # Para o código aqui se a pessoa não estiver logada!
+    st.stop()
 
 # ==========================================
 # APLICATIVO PRINCIPAL (O USUÁRIO ESTÁ LOGADO)
 # ==========================================
 usuario_id = st.session_state['usuario_id']
 
+# Busca a hora da última sincronização para o reloginho
+try:
+    ultimo_sync = logica.obter_ultima_atualizacao(usuario_id)
+except:
+    ultimo_sync = "Aguardando atualização"
+
 col_titulo, col_sair = st.columns([8, 1])
 col_titulo.title("☠️ Mentor de Estudos - Modo Hard")
+col_titulo.caption(f"🔄 Sincronização do Calendário: {ultimo_sync}") # ⚡ O RELOGINHO AQUI!
+
 if col_sair.button("🚪 Sair", use_container_width=True):
     st.session_state['usuario_id'] = None
     st.rerun()
@@ -100,15 +108,11 @@ with aba_dashboard:
         else:
             st.info("Resolva sua primeira bateria de questões para gerar o gráfico!")
 
-    # -------------------------------------------------------------
-    # NOVA SEÇÃO: RAIO-X CIRÚRGICO POR TÓPICO (ANÁLISE DE LACUNAS)
-    # -------------------------------------------------------------
     st.divider()
     st.subheader("🔬 Raio-X por Tópico (Onde focar)")
     st.write("Identifique suas maiores fraquezas e pontos fortes com base nas baterias resolvidas.")
     
     df_topicos = logica.calcular_acertos_por_topico(usuario_id)
-    
     if not df_topicos.empty:
         st.dataframe(
             df_topicos[['disciplina', 'topico', 'taxa_acertos', 'status']],
@@ -160,7 +164,7 @@ with aba_calendario:
 
         cores = {
             'Estudo': '#00b4d8',            
-            'Estudo ⏳': '#00b4d8', # <--- COR ADICIONADA AQUI!
+            'Estudo ⏳': '#00b4d8', 
             'Revisão 1d': '#ff006e',       
             'Revisão 7d': '#ff006e',
             'Revisão 30d': '#ff006e',
@@ -209,29 +213,28 @@ with aba_calendario:
                             submit_acertos = st.form_submit_button("Salvar e Concluir", use_container_width=True, type="primary")
                             
                             if submit_acertos:
-                                with st.spinner("Registrando sua glória..."):
+                                with st.spinner("Registrando acertos..."):
                                     logica.concluir_tarefa_e_gerar_revisoes(row['id'], row['tipo_atividade'], row['topico'], qtd_acertos, qtd_total, usuario_id)
-                                st.toast("Bateria de questões registrada! 🔥")
+                                st.toast("Bateria registrada! 🔥")
                                 st.rerun()
                 
-                # <--- MUDANÇA NO BOTÃO AQUI! (Aceita 'Estudo' e 'Estudo ⏳')
                 elif 'Estudo' in row['tipo_atividade']:
                     with st.popover("🎯 Ação da Meta", use_container_width=True):
                         st.write("Status do Assunto:")
                         if st.button("✅ Dominei (Gerar Revisões)", key=f"btn_feito_{row['id']}", use_container_width=True, type="primary"):
-                            with st.spinner("O trator está trabalhando..."):
+                            with st.spinner("Gerando revisões..."):
                                 logica.concluir_tarefa_e_gerar_revisoes(row['id'], row['tipo_atividade'], row['topico'], 0, 0, usuario_id)
-                            st.toast("Revisões geradas com sucesso!")
+                            st.toast("Revisões geradas!")
                             st.rerun()
                             
                         if st.button("⏳ Estudei, mas não acabei", key=f"btn_falta_{row['id']}", use_container_width=True):
-                            with st.spinner("Adiavelmente..."):
+                            with st.spinner("Salvando andamento..."):
                                 logica.estudei_mas_nao_terminei(row['id'], usuario_id)
-                            st.toast("Tarefa adiada para o próximo buraco.")
+                            st.toast("Progresso salvo e clonado para amanhã!")
                             st.rerun()
                 else:
                     if st.button(f"✅ Feito", key=f"btn_{row['id']}", use_container_width=True):
-                        with st.spinner("Marcando como concluído..."):
+                        with st.spinner("Concluindo..."):
                             logica.concluir_tarefa_e_gerar_revisoes(row['id'], row['tipo_atividade'], row['topico'], 0, 0, usuario_id)
                         st.toast("Mais uma pra conta! 🚀")
                         st.rerun()
@@ -287,13 +290,12 @@ with aba_config:
             sucesso = database.recalcular_cronograma_futuro(usuario_id)
         
         if sucesso:
-            st.success("Rotina updated!")
+            st.success("Rotina atualizada!")
             st.rerun()
         else:
             st.error("Ops, deu um erro ao recalcular.")
 
     st.divider()
-    
     st.header("Cadastrar Novo Edital")
     with st.form("form_disciplina", clear_on_submit=True):
         nome_disc = st.text_input("Nome da Disciplina")
@@ -317,7 +319,6 @@ with aba_config:
                 st.warning("Preencha todos os campos.")
                 
     st.divider()
-     
     st.header("🗑️ Gerenciar Edital")
     df_disciplinas = logica.obter_disciplinas_do_usuario(usuario_id)
     
