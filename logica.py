@@ -134,19 +134,33 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
     cursor = conn.cursor()
     hoje = datetime.now(ZoneInfo('America/Bahia')).date()
     
-    # Transforma o tipo em 'Estudo ⏳' para ativar o super fura-fila!
+    # 1. Pega o tópico da tarefa atual para poder clonar
+    cursor.execute('SELECT id_topico FROM cronograma WHERE id = %s', (id_cronograma,))
+    resultado = cursor.fetchone()
+    if not resultado: 
+        conn.close()
+        return
+    id_topico = resultado[0]
+    
+    # 2. Fecha a tarefa de hoje para GARANTIR a sua 1 hora contada no limite diário!
     cursor.execute('''
         UPDATE cronograma 
-        SET tipo_atividade = 'Estudo ⏳', data_agendada = %s 
+        SET concluido = TRUE, tipo_atividade = 'Estudo (Incompleto)', data_agendada = %s 
         WHERE id = %s
     ''', (hoje, id_cronograma))
     
+    # 3. Cria a continuação furadora de fila para amanhã
+    amanha = hoje + timedelta(days=1)
+    cursor.execute('''
+        INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada, concluido)
+        VALUES (%s, 'Estudo ⏳', %s, FALSE)
+    ''', (id_topico, amanha))
+    
+    # Te dá uns pontinhos de XP pelo esforço, porque ninguém é de ferro
+    cursor.execute('UPDATE configuracao SET pontos = pontos + 5 WHERE usuario_id = %s', (usuario_id,))
+    
     conn.commit()
     conn.close()
-    database.recalcular_cronograma_futuro(usuario_id)
-        
-    # --- A MÁGICA DA AUTOMAÇÃO AQUI! ---
-    # Depois de fechar o banco, mandamos o robô arrumar a bagunça do futuro!
     database.recalcular_cronograma_futuro(usuario_id)
 
 
