@@ -330,7 +330,6 @@ def recalcular_cronograma_futuro(usuario_id):
             conn.close()
         
 def atualizar_streak_e_xp(usuario_id, xp_ganho=0):
-    # Mantive o xp_ganho ali só pra não quebrar a função que você já colou no logica.py
     conn = conectar()
     cursor = conn.cursor()
     try:
@@ -344,6 +343,10 @@ def atualizar_streak_e_xp(usuario_id, xp_ganho=0):
             streak_atual = resultado[0] if resultado[0] else 0
             ultima_atividade = resultado[1]
             
+            # 🔬 TRATAMENTO CIRÚRGICO: Se o banco trouxer data + hora, extrai apenas a data pura!
+            if hasattr(ultima_atividade, 'date'):
+                ultima_atividade = ultima_atividade.date()
+            
             if ultima_atividade == hoje:
                 novo_streak = streak_atual
             elif ultima_atividade == ontem:
@@ -351,7 +354,6 @@ def atualizar_streak_e_xp(usuario_id, xp_ganho=0):
             else:
                 novo_streak = 1
                 
-            # AGORA SIM! Atualizando SÓ O QUE EXISTE na tabela usuarios!
             cursor.execute('''
                 UPDATE usuarios 
                 SET streak = %s, ultima_atividade = %s 
