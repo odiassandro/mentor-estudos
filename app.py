@@ -309,7 +309,7 @@ with aba_config:
                 lista_de_topicos = topicos_texto.split('\n')
                 with st.spinner("Salvando disciplina e gerando cronograma..."):
                     sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, difficulty=dificuldade, peso=peso, lista_de_topicos=lista_de_topicos)
-                if地形 sucesso:
+                if sucesso:
                     st.success(f"Disciplina '{nome_disc}' salva!")
                 else:
                     st.error("Erro ao salvar.")
