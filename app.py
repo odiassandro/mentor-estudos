@@ -159,17 +159,17 @@ with aba_calendario:
             
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if not df_agenda.empty:
+  if not df_agenda.empty:
         df_agenda['data_agendada'] = pd.to_datetime(df_agenda['data_agendada']).dt.date
 
-      cores = {
+        cores = {
             'Estudo': '#00b4d8',            
             'Estudo ⏳': '#00b4d8', 
             'Revisão 1d': '#ff006e',       
             'Revisão 7d': '#ff006e',
             'Questões 3d': '#8338ec',
-            'Questões 30d': '#8338ec' # <--- Adicione essa linha para pintar o novo card de roxo!
-            }
+            'Questões 30d': '#8338ec'
+        }
 
         for index, row in df_agenda.iterrows():
             data_tarefa = row['data_agendada']
