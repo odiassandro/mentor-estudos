@@ -5,39 +5,42 @@ import database
 import random
 
 def obter_estatisticas_usuario(usuario_id):
+    import database
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    
     conn = database.conectar()
     cursor = conn.cursor()
-    try:
-        # Buscamos a data da última atividade também!
-        cursor.execute('''
-            SELECT u.streak, u.ultima_atividade, c.pontos 
-            FROM usuarios u
-            JOIN configuracao c ON u.id = c.usuario_id
-            WHERE u.id = %s
-        ''', (usuario_id,))
+    
+    # 1. Busca os pontos (XP) que ficam na tabela configuracao
+    cursor.execute('SELECT pontos FROM configuracao WHERE usuario_id = %s', (usuario_id,))
+    res_conf = cursor.fetchone()
+    pontos = res_conf[0] if res_conf and res_conf[0] else 0
+    
+    # 2. Busca o Streak na tabela usuarios
+    cursor.execute('SELECT streak, ultima_atividade FROM usuarios WHERE id = %s', (usuario_id,))
+    res_user = cursor.fetchone()
+    
+    streak = 0
+    if res_user:
+        streak = res_user[0] if res_user[0] else 0
+        ultima_atividade = res_user[1]
         
-        resultado = cursor.fetchone()
-        if resultado:
-            streak_db = resultado[0] if resultado[0] else 0
-            ultima_ativ = resultado[1]
-            pontos = resultado[2] if resultado[2] else 0
+        if hasattr(ultima_atividade, 'date'):
+            ultima_atividade = ultima_atividade.date()
             
-            hoje = datetime.now(ZoneInfo('America/Bahia')).date()
-            ontem = hoje - timedelta(days=1)
+        hoje = datetime.now(ZoneInfo('America/Bahia')).date()
+        ontem = hoje - timedelta(days=1)
+        
+        # 3. O Teste de Realidade: Se não fez nada hoje e nem ontem, a fogueira apagou!
+        if ultima_atividade and ultima_atividade != hoje and ultima_atividade != ontem:
+            streak = 0
+            # Já atualiza no banco de forma silenciosa para o número real
+            cursor.execute('UPDATE usuarios SET streak = 0 WHERE id = %s', (usuario_id,))
+            conn.commit()
             
-            # O cérebro do Streak: Se você estudou hoje ou ontem, mantém. Se não, ZERA!
-            if ultima_ativ and ultima_ativ >= ontem:
-                streak_real = streak_db
-            else:
-                streak_real = 0
-                
-            return streak_real, pontos
-        return 0, 0
-    except Exception as e:
-        print(f"Erro ao obter estatísticas: {e}")
-        return 0, 0
-    finally:
-        conn.close()
+    conn.close()
+    return streak, pontos
         
 def calcular_progresso_edital(usuario_id):
     conn = database.conectar()
