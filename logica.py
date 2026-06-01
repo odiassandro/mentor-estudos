@@ -186,6 +186,7 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if not resultado: return
     id_topico = resultado[0]
     
+   # === A MÁGICA DO EFEITO DOMINÓ (VERSÃO ENXUTA - 4 PASSOS) ===
     proxima_ativ = None
     dias_add = 0
     
@@ -195,20 +196,17 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
         dias_add = 1
     elif tipo_atividade == 'Revisão 1d':
         proxima_ativ = 'Questões 3d'
-        dias_add = 2  
+        dias_add = 2  # 1 + 2 = 3 dias do estudo original
     elif tipo_atividade == 'Questões 3d':
         proxima_ativ = 'Revisão 7d'
-        dias_add = 4
+        dias_add = 4  # 3 + 4 = 7 dias do estudo original
     elif tipo_atividade == 'Revisão 7d':
-        proxima_ativ = 'Questões 11d'
-        dias_add = 4
-    elif tipo_atividade == 'Questões 11d':
-        proxima_ativ = 'Questões 28d'
-        dias_add = 17
-    elif tipo_atividade == 'Questões 28d':
-        proxima_ativ = 'Revisão 30d'
-        dias_add = 2
-
+        proxima_ativ = 'Questões 30d'
+        dias_add = 23 # 7 + 23 = 30 dias exatos do estudo original!
+    elif tipo_atividade == 'Questões 30d':
+        proxima_ativ = None # Fim do ciclo, assunto consolidado!
+        dias_add = 0
+        
     if total > 0:
         taxa = (acertos / total) * 100
         if taxa < 70:
