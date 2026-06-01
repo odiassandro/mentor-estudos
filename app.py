@@ -63,7 +63,7 @@ except:
 
 col_titulo, col_sair = st.columns([8, 1])
 col_titulo.title("☠️ Mentor de Estudos - Modo Hard")
-col_titulo.caption(f"🔄 Sincronização do Calendário: {ultimo_sync}") # ⚡ O RELOGINHO AQUI!
+col_titulo.caption(f"🔄 Sincronização do Calendário: {ultimo_sync}") 
 
 if col_sair.button("🚪 Sair", use_container_width=True):
     st.session_state['usuario_id'] = None
@@ -159,7 +159,7 @@ with aba_calendario:
             
     st.markdown("<br>", unsafe_allow_html=True)
 
-  if not df_agenda.empty:
+    if not df_agenda.empty:
         df_agenda['data_agendada'] = pd.to_datetime(df_agenda['data_agendada']).dt.date
 
         cores = {
@@ -309,7 +309,7 @@ with aba_config:
                 lista_de_topicos = topicos_texto.split('\n')
                 with st.spinner("Salvando disciplina e gerando cronograma..."):
                     sucesso = database.salvar_disciplina_completa(usuario_id, nome_disc, difficulty=dificuldade, peso=peso, lista_de_topicos=lista_de_topicos)
-                if sucesso:
+                if地形 sucesso:
                     st.success(f"Disciplina '{nome_disc}' salva!")
                 else:
                     st.error("Erro ao salvar.")
