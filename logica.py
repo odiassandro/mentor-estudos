@@ -147,14 +147,12 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
         return
     id_topico = resultado[0]
     
-    # Salva a hora estudada de hoje mudando o nome da atividade
     cursor.execute('''
         UPDATE cronograma 
         SET concluido = TRUE, tipo_atividade = 'Estudo (Incompleto)', data_agendada = %s 
         WHERE id = %s
     ''', (hoje, id_cronograma))
     
-    # Clona e cria o fura-fila para amanhã
     amanha = hoje + timedelta(days=1)
     cursor.execute('''
         INSERT INTO cronograma (id_topico, tipo_atividade, data_agendada, concluido)
@@ -165,10 +163,8 @@ def estudei_mas_nao_terminei(id_cronograma, usuario_id):
     conn.commit()
     conn.close()
     
-    # ⚡ FANTASMA ASSÍNCRONO TRABALHANDO
-    import threading
-    thread_estudo = threading.Thread(target=database.recalcular_cronograma_futuro, args=(usuario_id,))
-    thread_estudo.start()
+    # 🔄 VOLTOU PRO MODO SEGURO: Recalcula de forma síncrona
+    database.recalcular_cronograma_futuro(usuario_id)
 
 def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df, acertos, total, usuario_id, recalcular=True):
     import database
@@ -189,7 +185,6 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     if not resultado: return
     id_topico = resultado[0]
     
-   # === A MÁGICA DO EFEITO DOMINÓ (VERSÃO ENXUTA - 4 PASSOS) ===
     proxima_ativ = None
     dias_add = 0
     
@@ -199,17 +194,17 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
         dias_add = 1
     elif tipo_atividade == 'Revisão 1d':
         proxima_ativ = 'Questões 3d'
-        dias_add = 2  # 1 + 2 = 3 dias do estudo original
+        dias_add = 2  
     elif tipo_atividade == 'Questões 3d':
         proxima_ativ = 'Revisão 7d'
-        dias_add = 4  # 3 + 4 = 7 dias do estudo original
+        dias_add = 4  
     elif tipo_atividade == 'Revisão 7d':
         proxima_ativ = 'Questões 30d'
-        dias_add = 23 # 7 + 23 = 30 dias exatos do estudo original!
+        dias_add = 23 
     elif tipo_atividade == 'Questões 30d':
-        proxima_ativ = None # Fim do ciclo, assunto consolidado!
+        proxima_ativ = None 
         dias_add = 0
-        
+
     if total > 0:
         taxa = (acertos / total) * 100
         if taxa < 70:
@@ -239,12 +234,9 @@ def concluir_tarefa_e_gerar_revisoes(id_cronograma, tipo_atividade, id_topico_df
     conn.commit()
     conn.close()
     
-    # ⚡ PROCESSO ASSÍNCRONO DO PROFESSOR SÊNIOR
+    # 🔄 VOLTOU PRO MODO SEGURO: Bloqueia a tela até recalcular tudo!
     if recalcular:
-        import threading
-        thread_recalculo = threading.Thread(target=database.recalcular_cronograma_futuro, args=(usuario_id,))
-        thread_recalculo.start()
-        
+        database.recalcular_cronograma_futuro(usuario_id)
 
 def obter_disciplinas_do_usuario(usuario_id):
     conn = database.conectar()
